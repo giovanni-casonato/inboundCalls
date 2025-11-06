@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Environments
+.env
+.env.*
+.venv/
+venv/
+ENV/
+
+# Packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Logs and caches
+*.log
+.coverage*
+coverage.xml
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE/editor
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Node (if any frontend assets)
+node_modules/
+
+# SQLite or local DB
+*.sqlite3
+
+# Compiled assets
+static/**/*.map
+
+# Temporary
+*.tmp
+*.temp

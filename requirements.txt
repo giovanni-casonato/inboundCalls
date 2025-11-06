@@ -1,8 +1,6 @@
 fastapi
 uvicorn[standard]
 twilio
-jinja2
-python-multipart
 openai
 deepgram-sdk
 pybase64
