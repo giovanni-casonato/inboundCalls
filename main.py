@@ -89,7 +89,7 @@ async def twilio_websocket(websocket: WebSocket):
                     stream_sid = data['streamSid']
                     print(f"Call started for stream_sid: {stream_sid}")
 
-                    text_to_speech = TTSFactory.create_tts_provider("elevenlabs", websocket, stream_sid)                    
+                    text_to_speech = TTSFactory.create_tts_provider("elevenlabs", websocket, voice_id, stream_sid)                    
                     await text_to_speech.get_audio_from_text(f"Hello, is this James?")
 
                     openai_llm = LargeLanguageModel(text_to_speech)
@@ -120,6 +120,7 @@ async def twilio_websocket(websocket: WebSocket):
                 case "stop":
                     if transcriber:
                         await transcriber.deepgram_close()
+                        transcriber = None
                     print("Stop message received")
 
     except Exception as e:
@@ -128,6 +129,7 @@ async def twilio_websocket(websocket: WebSocket):
         # Cleanup
         if transcriber:
             await transcriber.deepgram_close()
+            transcriber = None
 
 
 if __name__ == "__main__":

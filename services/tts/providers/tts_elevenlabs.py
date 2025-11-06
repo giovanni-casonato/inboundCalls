@@ -7,19 +7,20 @@ from ..tts_provider import TTSProvider
 from elevenlabs.client import ElevenLabs
 
 class ElevenLabsTTS(TTSProvider):
-    def __init__(self, ws: WebSocket, stream_sid):
+    def __init__(self, ws: WebSocket, voice_id: str, stream_sid: str):
         super().__init__(ws, stream_sid)
         self.api_key = os.getenv("ELEVENLABS_API_KEY")
         if not self.api_key:
             raise ValueError("ElevenLabs API key not found.")
         self.client = ElevenLabs(api_key=self.api_key)
+        self.voice_id = voice_id
         
     async def get_audio_from_text(self, text: str) -> bool:
         try:
             # Get audio data directly in μ-law 8kHz format
             audio_stream = self.client.text_to_speech.stream(
                 text=text,
-                voice_id="21m00Tcm4TlvDq8ikWAM",
+                voice_id=self.voice_id,
                 model_id="eleven_turbo_v2_5",
                 output_format="ulaw_8000"  # Request μ-law 8kHz directly
             )
