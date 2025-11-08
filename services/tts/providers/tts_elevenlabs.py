@@ -4,16 +4,15 @@ import json
 import base64
 from fastapi import WebSocket
 from ..tts_provider import TTSProvider
-from elevenlabs import ElevenLabs
+from elevenlabs.client import ElevenLabs
 
 class ElevenLabsTTS(TTSProvider):
     def __init__(self, ws: WebSocket, stream_sid: str):
         super().__init__(ws, stream_sid)
-        self.api_key = os.getenv("ELEVENLABS_API_KEY") or os.getenv("ELEVEN_API_KEY")
+        self.api_key = os.getenv("ELEVENLABS_API_KEY")
         if not self.api_key:
             raise ValueError("ElevenLabs API key not found.")
-        os.environ["ELEVEN_API_KEY"] = self.api_key
-        self.client = ElevenLabs()
+        self.client = ElevenLabs(api_key=self.api_key)
         self.voice_id = "UgBBYS2sOqTuMpoF3BR0"
         
     async def get_audio_from_text(self, text: str) -> bool:
@@ -43,5 +42,5 @@ class ElevenLabsTTS(TTSProvider):
             return True
                 
         except Exception as e:
-            print(f"ElevenLabs TTS error: {e}")
-            return False
+            # Encode to base64 for Twilio
+            payload_b64 = base64.b64encode(audio_stream).decode('utf-8')
