@@ -5,7 +5,6 @@ from fastapi import WebSocket
 from typing import Optional
 from deepgram import (
     DeepgramClient,
-    DeepgramClientOptions,
     LiveTranscriptionEvents,
     LiveOptions
 )
@@ -43,15 +42,12 @@ class DeepgramTranscriber:
     async def deepgram_connect(self):
         """Initialize connection to Deepgram"""
         try:
-            # Configure Deepgram client
-            config = DeepgramClientOptions(
-                options={
-                    "keepalive": "true",
-                    "heartbeat": "5s"
-                }
-            )
-            
-            self.deepgram_client = DeepgramClient("", config)
+            # Initialize Deepgram client using API key from environment
+            api_key = os.getenv("DEEPGRAM_API_KEY")
+            if not api_key:
+                raise ValueError("Deepgram API key not found. Set DEEPGRAM_API_KEY env var.")
+
+            self.deepgram_client = DeepgramClient(api_key)
             
             # Create live transcription connection
             self.dg_connection = self.deepgram_client.listen.asyncwebsocket.v("1")
