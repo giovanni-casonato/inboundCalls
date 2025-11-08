@@ -23,7 +23,7 @@ class DeepgramTranscriber:
         self.transcripts = []
         self.ws = ws
         self.stream_sid = stream_sid
-
+        self.utterance_end_ms = os.getenv("DEEPGRAM_UTTERANCE_END_MS", "2000")
         # Build options for v3 LiveOptions
         self.options: LiveOptions = LiveOptions(
             model="nova-3",
@@ -53,7 +53,7 @@ class DeepgramTranscriber:
         if not self.dg_connection:
             raise RuntimeError("Failed to initialize Deepgram live connection; SDK version mismatch")
 
-        async def on_message(self, result, **kwargs):
+        async def on_message(result, **kwargs):
             "Receive text from deepgram_ws"
             transcripts = kwargs.get('transcripts')
             assistant: LargeLanguageModel = kwargs.get('assistant')
@@ -77,7 +77,7 @@ class DeepgramTranscriber:
                     await assistant.run_chat(user_message_final)
                     transcripts.clear()
 
-        async def on_utterance_end(self, utterance_end, **kwargs):
+        async def on_utterance_end(utterance_end, **kwargs):
             transcripts = kwargs.get('transcripts')
             assistant: LargeLanguageModel = kwargs.get('assistant')
             if transcripts and len(transcripts) > 0 and re.search(r'[.!?]$', transcripts[-1]):
@@ -99,7 +99,11 @@ class DeepgramTranscriber:
             self.dg_connection.on('Transcript', on_message_with_kwargs)
             self.dg_connection.on('UtteranceEnd', on_utterance_end_kwargs)
 
-        await self.dg_connection.start(self.options)
+        # Start connection with utterance_end_ms as request param per SDK
+        try:
+            await self.dg_connection.start(self.options, {'utterance_end_ms': str(self.utterance_end_ms)})
+        except TypeError:
+            await self.dg_connection.start(self.options, utterance_end_ms=str(self.utterance_end_ms))
         print('Deepgram Transcriber Connected')
     
     async def deepgram_close(self):
