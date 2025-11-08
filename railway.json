@@ -1,0 +1,19 @@
+{
+  "build": {
+    "commands": [
+      "pip install -r requirements.txt"
+    ]
+  },
+  "deploy": {
+    "startCommand": "python -m uvicorn main:app --host 0.0.0.0 --port ${PORT}",
+    "restartPolicyType": "ON_FAILURE"
+  },
+  "healthcheckPath": "/health",
+  "env": {
+    "TWILIO_ACCOUNT_SID": {"required": true},
+    "TWILIO_AUTH_TOKEN": {"required": true},
+    "OPENAI_API_KEY": {"required": true},
+    "DEEPGRAM_API_KEY": {"required": true},
+    "ELEVENLABS_API_KEY": {"required": false}
+  }
+}
