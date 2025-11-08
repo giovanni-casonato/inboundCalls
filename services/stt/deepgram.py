@@ -1,7 +1,7 @@
+import os
 import json
 from deepgram import (
     DeepgramClient,
-    DeepgramClientOptions,
     LiveTranscriptionEvents,
     LiveOptions,
 )
@@ -16,10 +16,11 @@ ENCODING = "mulaw"
 class DeepgramTranscriber:
     def __init__(self, assistant: LargeLanguageModel, ws: WebSocket, stream_sid):
         self.assistant = assistant
-        self.config: DeepgramClientOptions = DeepgramClientOptions(
-            options={"keepalive": "true"}
-        )
-        self.deepgram: DeepgramClient = DeepgramClient("", self.config)
+        # Initialize Deepgram client with API key from environment
+        self.api_key = os.getenv("DEEPGRAM_API_KEY")
+        if not self.api_key:
+            raise ValueError("Deepgram API key not found. Set DEEPGRAM_API_KEY env var.")
+        self.deepgram: DeepgramClient = DeepgramClient(self.api_key)
         self.dg_connection = None 
         self.transcripts = []
         self.ws = ws
@@ -52,15 +53,6 @@ class DeepgramTranscriber:
             assistant: LargeLanguageModel = kwargs.get('assistant')
             ws: WebSocket = kwargs.get('websocket')
             stream_sid = kwargs.get('stream_sid')
-
-            # Useful for Debugging
-            # print(f"""
-            # Alt Length: {len(result.channel.alternatives)}
-            # sentence: '{result.channel.alternatives[0].transcript}'
-            # speech_final: {result.speech_final}
-            # is_final: {result.is_final}
-            # transcript: {" ".join(transcripts)}
-            # """)
 
             sentence = result.channel.alternatives[0].transcript
 
