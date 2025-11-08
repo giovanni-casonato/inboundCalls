@@ -33,7 +33,6 @@ class DeepgramTranscriber:
             channels=1,
             sample_rate=TWILIO_SAMPLE_RATE,
             interim_results=True,
-            utterance_end_ms=2000,
             punctuate=True,
         )
     

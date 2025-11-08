@@ -34,8 +34,6 @@ class DeepgramTranscriber:
             sample_rate=8000,
             # To get UtteranceEnd, the following must be set:
             interim_results=True,
-            # Time in milliseconds of silence to wait for before finalizing speech
-            utterance_end_ms=2000,
             punctuate=True
         )
 
@@ -60,7 +58,7 @@ class DeepgramTranscriber:
             self.dg_connection.on(LiveTranscriptionEvents.Warning, self._on_warning)
             
             # Start the connection
-            if await self.dg_connection.start(self.options):
+            if await self.dg_connection.start(self.options, utterance_end_ms="2000"):
                 print(f"🎤 Connected to Deepgram for stream {self.stream_sid}")
                 self.is_connected = True
                 
