@@ -12,35 +12,69 @@ class ElevenLabsTTS(TTSProvider):
         self.api_key = os.getenv("ELEVENLABS_API_KEY")
         if not self.api_key:
             raise ValueError("ElevenLabs API key not found.")
-        self.client = ElevenLabs(api_key=self.api_key)
+
+        # Ensure SDK-compatible env var name exists
+        os.environ.setdefault("ELEVEN_API_KEY", self.api_key)
+
+        # Initialize client robustly across SDK versions
+        try:
+            # Newer SDKs may read API key from env and take no args
+            self.client = ElevenLabs()
+        except TypeError:
+            # Older SDKs allow explicit api_key kwarg
+            self.client = ElevenLabs(api_key=self.api_key)
+
+        # Configure your voice (voice ID expected by stream API)
         self.voice_id = "UgBBYS2sOqTuMpoF3BR0"
         
     async def get_audio_from_text(self, text: str) -> bool:
         try:
-            # Get audio data directly in μ-law 8kHz format
-            audio_stream = self.client.text_to_speech.stream(
-                text=text,
-                voice_id=self.voice_id,
-                model_id="eleven_turbo_v2_5",
-                output_format="ulaw_8000"  # Request μ-law 8kHz directly
-            )
+            stream = None
+            # Preferred streaming API
+            if hasattr(self.client, "text_to_speech") and hasattr(self.client.text_to_speech, "stream"):
+                stream = self.client.text_to_speech.stream(
+                    text=text,
+                    voice_id=self.voice_id,
+                    model_id="eleven_turbo_v2_5",
+                    output_format="ulaw_8000"  # μ-law 8kHz for Twilio
+                )
+            # Fallback: alternate API naming in some SDK versions
+            elif hasattr(self.client, "generate_stream"):
+                stream = self.client.generate_stream(
+                    text=text,
+                    voice=self.voice_id,
+                    model_id="eleven_turbo_v2_5",
+                    output_format="ulaw_8000"
+                )
+            else:
+                raise RuntimeError("ElevenLabs streaming API not found in installed SDK")
             
-            for chunk in audio_stream:
+            # Iterate over audio chunks and send to Twilio WebSocket
+            for chunk in stream:
+                if not chunk:
+                    continue
                 if isinstance(chunk, bytes):
-                    # Encode to base64 for Twilio
                     payload_b64 = base64.b64encode(chunk).decode('utf-8')
-                    
-                    # Send to Twilio WebSocket
                     await self.ws.send_text(json.dumps({
                         'event': 'media',
                         'streamSid': f"{self.stream_sid}",
                         'media': {'payload': payload_b64}
                     }))
                 else:
-                    print(f"Unexpected chunk type: {type(chunk)}")
-                    
+                    # Some SDKs may yield dicts with 'audio'
+                    if isinstance(chunk, dict) and 'audio' in chunk:
+                        audio_bytes = chunk['audio']
+                        payload_b64 = base64.b64encode(audio_bytes).decode('utf-8')
+                        await self.ws.send_text(json.dumps({
+                            'event': 'media',
+                            'streamSid': f"{self.stream_sid}",
+                            'media': {'payload': payload_b64}
+                        }))
+                    else:
+                        print(f"Unexpected ElevenLabs stream chunk type: {type(chunk)}")
+            
             return True
                 
         except Exception as e:
-            # Encode to base64 for Twilio
-            payload_b64 = base64.b64encode(audio_stream).decode('utf-8')
+            print(f"ElevenLabs TTS error: {e}")
+            return False
