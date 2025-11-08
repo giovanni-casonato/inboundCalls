@@ -5,7 +5,7 @@ openai
 deepgram-sdk
 pybase64
 numpy
-elevenlabs
+elevenlabs==1.6.0
 scipy
 audioop-lts
 groq
