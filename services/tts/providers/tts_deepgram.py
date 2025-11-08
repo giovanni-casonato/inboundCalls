@@ -2,7 +2,7 @@ import os
 import base64
 import json
 from fastapi import WebSocket
-from deepgram import DeepgramClient, SpeakOptions
+from deepgram import DeepgramClient
 from ..tts_provider import TTSProvider
 
 class DeepgramTTS(TTSProvider):
@@ -16,11 +16,12 @@ class DeepgramTTS(TTSProvider):
 
     async def get_audio_from_text(self, text: str) -> bool:
         try:
-            options = SpeakOptions(
-                model="aura-2-amalthea-en",
-                encoding="mulaw",
-                sample_rate=8000
-            )
+            # Use dictionary options for SDK compatibility across versions
+            options = {
+                "model": "aura-2-amalthea-en",
+                "encoding": "mulaw",
+                "sample_rate": 8000,
+            }
             
             # Get audio stream directly
             audio_stream = self.deepgram.speak.rest.v("1").stream(
