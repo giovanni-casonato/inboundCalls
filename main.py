@@ -58,7 +58,7 @@ async def media_stream(websocket: WebSocket):
                     print(f"Inbound call started - Stream SID: {stream_sid}, Call SID: {call_sid}")
                     
                     # Initialize TTS provider for responding to caller
-                    text_to_speech = TTSFactory.create_tts_provider("elevenlabs", websocket, voice_id, stream_sid)
+                    text_to_speech = TTSFactory.create_tts_provider("elevenlabs", websocket, stream_sid)
                     
                     # Initialize AI conversation
                     openai_llm = LargeLanguageModel(text_to_speech)

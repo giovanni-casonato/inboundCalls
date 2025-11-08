@@ -7,13 +7,13 @@ from ..tts_provider import TTSProvider
 from elevenlabs.client import ElevenLabs
 
 class ElevenLabsTTS(TTSProvider):
-    def __init__(self, ws: WebSocket, voice_id: str, stream_sid: str):
+    def __init__(self, ws: WebSocket, stream_sid: str):
         super().__init__(ws, stream_sid)
         self.api_key = os.getenv("ELEVENLABS_API_KEY")
         if not self.api_key:
             raise ValueError("ElevenLabs API key not found.")
         self.client = ElevenLabs(api_key=self.api_key)
-        self.voice_id = voice_id
+        self.voice_id = "UgBBYS2sOqTuMpoF3BR0"
         
     async def get_audio_from_text(self, text: str) -> bool:
         try:
