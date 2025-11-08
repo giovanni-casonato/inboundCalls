@@ -5,17 +5,8 @@ from fastapi import WebSocket
 from services.llm.openai_async import LargeLanguageModel
 import re
 
-# Deepgram SDK imports (robust across versions)
-from deepgram import DeepgramClient
-try:
-    # Newer SDK may use LiveTranscriptionOptions
-    from deepgram import LiveTranscriptionOptions as _LiveOptions
-except ImportError:
-    try:
-        # Older SDK export
-        from deepgram import LiveOptions as _LiveOptions
-    except ImportError:
-        _LiveOptions = None
+# Deepgram SDK imports aligned to v3
+from deepgram import DeepgramClient, LiveTranscriptionEvents, LiveOptions
 
 TWILIO_SAMPLE_RATE = 8000
 ENCODING = "mulaw"
@@ -33,31 +24,32 @@ class DeepgramTranscriber:
         self.ws = ws
         self.stream_sid = stream_sid
 
-        # Build options compatible across SDK versions
-        options_dict = {
-            "model": "nova-3",
-            "language": "en-US",
-            "smart_format": True,
-            "encoding": ENCODING,
-            "channels": 1,
-            "sample_rate": TWILIO_SAMPLE_RATE,
-            "interim_results": True,
-            "utterance_end_ms": 2000,
-            "punctuate": True,
-        }
-        self.options = _LiveOptions(**options_dict) if _LiveOptions else options_dict
+        # Build options for v3 LiveOptions
+        self.options: LiveOptions = LiveOptions(
+            model="nova-3",
+            language="en-US",
+            smart_format=True,
+            encoding=ENCODING,
+            channels=1,
+            sample_rate=TWILIO_SAMPLE_RATE,
+            interim_results=True,
+            utterance_end_ms=2000,
+            punctuate=True,
+        )
     
     async def deepgram_connect(self):
-        # Create live connection (handle variant naming across SDKs)
+        # Create live connection using asyncwebsocket (v3)
         conn = None
-        # Prefer async live
         try:
-            conn = self.deepgram.listen.asynclive.v("1")
+            conn = self.deepgram.listen.asyncwebsocket.v("1")
         except Exception:
             try:
-                conn = self.deepgram.listen.asyncwebsocket.v("1")
+                conn = self.deepgram.listen.websocket.v("1")
             except Exception:
-                conn = None
+                try:
+                    conn = self.deepgram.listen.live.v("1")
+                except Exception:
+                    conn = None
         self.dg_connection = conn
         if not self.dg_connection:
             raise RuntimeError("Failed to initialize Deepgram live connection; SDK version mismatch")
@@ -69,9 +61,9 @@ class DeepgramTranscriber:
             ws: WebSocket = kwargs.get('websocket')
             stream_sid = kwargs.get('stream_sid')
 
-            sentence = result.channel.alternatives[0].transcript if result and result.channel and result.channel.alternatives else ""
+            sentence = result.channel.alternatives[0].transcript if result and getattr(result, 'channel', None) and result.channel.alternatives else ""
 
-            if result.is_final:
+            if getattr(result, 'is_final', False):
                 # collect final transcripts:
                 if len(sentence) > 0:
                     transcripts.append(sentence)
@@ -99,14 +91,14 @@ class DeepgramTranscriber:
         on_message_with_kwargs = partial(on_message, transcripts=self.transcripts, assistant=self.assistant, websocket=self.ws, stream_sid=self.stream_sid)
         on_utterance_end_kwargs = partial(on_utterance_end, transcripts=self.transcripts, assistant=self.assistant)
         
-        # Register event handlers using string event names for compatibility
+        # Register event handlers using enums (v3)
         try:
+            self.dg_connection.on(LiveTranscriptionEvents.Transcript, on_message_with_kwargs)
+            self.dg_connection.on(LiveTranscriptionEvents.UtteranceEnd, on_utterance_end_kwargs)
+        except Exception:
+            # Fallback to string event names for older variants
             self.dg_connection.on('Transcript', on_message_with_kwargs)
             self.dg_connection.on('UtteranceEnd', on_utterance_end_kwargs)
-        except Exception:
-            # Some SDKs may use lowercase or different naming
-            self.dg_connection.on('transcript', on_message_with_kwargs)
-            self.dg_connection.on('utterance_end', on_utterance_end_kwargs)
 
         await self.dg_connection.start(self.options)
         print('Deepgram Transcriber Connected')

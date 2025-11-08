@@ -2,7 +2,7 @@ fastapi
 uvicorn[standard]
 twilio
 openai
-deepgram-sdk
+deepgram-sdk==3.0.0
 pybase64
 numpy
 elevenlabs==1.6.0
