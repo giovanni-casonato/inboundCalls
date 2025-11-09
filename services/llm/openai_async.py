@@ -10,7 +10,6 @@ class LargeLanguageModel:
     def init_chat(self):
         with open('services/llm/instructions.txt', "r") as f:
             instructions = f.read()
-    
         self.conversation.append({"role": "system", "content": instructions})
 
     async def run_chat(self, message):
