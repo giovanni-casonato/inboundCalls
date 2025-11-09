@@ -5,8 +5,7 @@ from fastapi import WebSocket
 from services.llm.openai_async import LargeLanguageModel
 import re
 
-# Deepgram SDK imports for Flux v2
-from deepgram import DeepgramClient
+from deepgram import AsyncDeepgramClient
 
 # Audio format constants for Flux
 # Flux supports mulaw at 8000Hz; Twilio sends mulaw at 8000Hz.
@@ -18,10 +17,7 @@ class DeepgramTranscriber:
     def __init__(self, assistant: LargeLanguageModel, ws: WebSocket, stream_sid):
         self.assistant = assistant
         # Initialize Deepgram client with API key from environment
-        self.api_key = os.getenv("DEEPGRAM_API_KEY")
-        if not self.api_key:
-            raise ValueError("Deepgram API key not found. Set DEEPGRAM_API_KEY env var.")
-        self.deepgram: DeepgramClient = DeepgramClient(self.api_key)
+        self.deepgram: AsyncDeepgramClient(api_key=os.getenv("DEEPGRAM_API_KEY"))
         self.dg_connection = None 
         self.transcripts = []
         self.ws = ws
@@ -53,10 +49,20 @@ class DeepgramTranscriber:
             return
         
         # Create Flux v2 connection
-        try:
-            self.dg_connection = self.deepgram.listen.v2.connect()
-        except Exception as e:
-            raise RuntimeError(f"Failed to initialize Deepgram Flux connection: {e}")
+        self.dg_connection = self.deepgram.listen.v2.connect(
+        model="flux-general-en",
+        language="en-US",
+        encoding=ENCODING,
+        sample_rate=TWILIO_SAMPLE_RATE,
+        channels=1,
+        interim_results=True,
+        smart_format=True,
+        punctuate=True,
+        # Flux turn-taking controls
+        eot_threshold=self.eot_threshold,
+        eager_eot_threshold=self.eager_eot_threshold,
+        eot_timeout_ms=self.eot_timeout_ms,
+        )
 
         async def on_transcript(result, **kwargs):
             "Handle transcript results from Flux"
