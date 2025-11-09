@@ -23,7 +23,10 @@ class DeepgramTranscriber:
         self.transcripts = []
         self.ws = ws
         self.stream_sid = stream_sid
+        self.started = False
+        self.closed = False
         self.utterance_end_ms = os.getenv("DEEPGRAM_UTTERANCE_END_MS", "2000")
+
         # Build options for v3 LiveOptions
         self.options: LiveOptions = LiveOptions(
             model="nova-3",
@@ -37,6 +40,10 @@ class DeepgramTranscriber:
         )
     
     async def deepgram_connect(self):
+        # If already started, do not reinitialize or restart
+        if self.dg_connection is not None and self.started:
+            print("socket is already initialized")
+            return
         # Create live connection using asyncwebsocket (v3)
         conn = None
         try:
@@ -103,12 +110,39 @@ class DeepgramTranscriber:
         try:
             await self.dg_connection.start(self.options, {'utterance_end_ms': str(self.utterance_end_ms)})
         except TypeError:
-            await self.dg_connection.start(self.options, utterance_end_ms=str(self.utterance_end_ms))
+            # Some SDK variants expect kwargs instead of a dict
+            try:
+                await self.dg_connection.start(self.options, utterance_end_ms=str(self.utterance_end_ms))
+            except Exception as e:
+                # If already started, mark and continue
+                if 'already started' in str(e).lower():
+                    print('Deepgram websocket already started; using existing connection')
+                    self.started = True
+                else:
+                    raise
+        else:
+            self.started = True
         print('Deepgram Transcriber Connected')
     
     async def deepgram_close(self):
         "Close Deepgram Connection"
-        await self.dg_connection.finish()
-        print(f'\nDeepgram Transcriber Closed\n')
+        try:
+            if self.dg_connection is not None and self.started and not self.closed:
+                # Finish gracefully; some SDKs have finish() as coroutine
+                finish_fn = getattr(self.dg_connection, 'finish', None)
+                if finish_fn is not None:
+                    res = finish_fn()
+                    if hasattr(res, '__await__'):
+                        await res
+                self.closed = True
+                self.started = False
+                self.dg_connection = None
+                print(f'\nDeepgram Transcriber Closed\n')
+            else:
+                # Already closed or never started
+                print('Deepgram connection not active; skip close')
+        except Exception as e:
+            # Swallow errors during shutdown to avoid crashing ASGI
+            print(f'Deepgram close error: {e}')
            
 
