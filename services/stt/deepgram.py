@@ -6,7 +6,7 @@ from services.llm.openai_async import LargeLanguageModel
 import re
 
 # Deepgram SDK imports for Flux v2
-from deepgram import DeepgramClient, LiveOptions
+from deepgram import DeepgramClient
 
 # Audio format constants for Flux
 # Flux supports mulaw at 8000Hz; Twilio sends mulaw at 8000Hz.
