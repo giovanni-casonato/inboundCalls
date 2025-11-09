@@ -109,17 +109,24 @@ class DeepgramTranscriber:
         # Start connection with utterance_end_ms as request param per SDK
         try:
             await self.dg_connection.start(self.options, {'utterance_end_ms': str(self.utterance_end_ms)})
-        except TypeError:
-            # Some SDK variants expect kwargs instead of a dict
-            try:
-                await self.dg_connection.start(self.options, utterance_end_ms=str(self.utterance_end_ms))
-            except Exception as e:
-                # If already started, mark and continue
-                if 'already started' in str(e).lower():
-                    print('Deepgram websocket already started; using existing connection')
-                    self.started = True
-                else:
-                    raise
+        except Exception as e:
+            msg = str(e).lower()
+            if 'already started' in msg:
+                print('Deepgram websocket already started; using existing connection')
+                self.started = True
+            elif isinstance(e, TypeError):
+                # Some SDK variants expect kwargs instead of a dict
+                try:
+                    await self.dg_connection.start(self.options, utterance_end_ms=str(self.utterance_end_ms))
+                except Exception as e2:
+                    msg2 = str(e2).lower()
+                    if 'already started' in msg2:
+                        print('Deepgram websocket already started; using existing connection')
+                        self.started = True
+                    else:
+                        raise
+            else:
+                raise
         else:
             self.started = True
         print('Deepgram Transcriber Connected')
