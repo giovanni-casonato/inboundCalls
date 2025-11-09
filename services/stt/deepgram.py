@@ -17,7 +17,7 @@ class DeepgramTranscriber:
     def __init__(self, assistant: LargeLanguageModel, ws: WebSocket, stream_sid):
         self.assistant = assistant
         # Initialize Deepgram client with API key from environment
-        self.deepgram: AsyncDeepgramClient(api_key=os.getenv("DEEPGRAM_API_KEY"))
+        self.deepgram = AsyncDeepgramClient(api_key=os.getenv("DEEPGRAM_API_KEY"))
         self.dg_connection = None 
         self.transcripts = []
         self.ws = ws
