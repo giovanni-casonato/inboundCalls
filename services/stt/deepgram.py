@@ -38,18 +38,18 @@ class DeepgramTranscriber:
         
         # Create Flux v2 connection
         self.dg_connection = self.deepgram.listen.v2.connect(
-        model="flux-general-en",
-        language="en-US",
-        encoding=ENCODING,
-        sample_rate=TWILIO_SAMPLE_RATE,
-        channels=1,
-        interim_results=True,
-        smart_format=True,
-        punctuate=True,
-        # Flux turn-taking controls
-        eot_threshold=self.eot_threshold,
-        eager_eot_threshold=self.eager_eot_threshold,
-        eot_timeout_ms=self.eot_timeout_ms,
+            model="flux-general-en",
+            # language="en-US",
+            # encoding=ENCODING,
+            # sample_rate=TWILIO_SAMPLE_RATE,
+            # channels=1,
+            # interim_results=True,
+            # smart_format=True,
+            # punctuate=True,
+            # Flux turn-taking controls
+            eot_threshold=self.eot_threshold,
+            eager_eot_threshold=self.eager_eot_threshold,
+            eot_timeout_ms=self.eot_timeout_ms,
         )
 
         async def on_transcript(result, **kwargs):
