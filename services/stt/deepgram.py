@@ -58,24 +58,22 @@ class DeepgramTranscriber:
         
         # Create Flux v2 connection
         try:
-            self.dg_connection = self.deepgram.listen.v2.connect()
+            if hasattr(self.deepgram.listen, 'v2'):
+                self.dg_connection = self.deepgram.listen.v2.connect(
+                    model="flux-general-en",
+                    encoding=ENCODING,
+                    sample_rate=TWILIO_SAMPLE_RATE,
+                    channels=1,
+                    smart_format=True,
+                    interim_results=True,
+                    eot_threshold=self.eot_threshold,
+                    eager_eot_threshold=self.eager_eot_threshold,
+                    eot_timeout_ms=self.eot_timeout_ms,
+                )
+            else:
+                raise AttributeError("ListenClient has no attribute 'v2'")
         except Exception as e:
             raise RuntimeError(f"Failed to initialize Deepgram Flux connection: {e}")
-+        # Create Flux v2 connection
-+        try:
-+            if hasattr(self.deepgram.listen, 'v2'):
-+                self.dg_connection = self.deepgram.listen.v2.connect(
-+                    model="flux-general-en",
-+                    encoding=ENCODING,
-+                    sample_rate=TWILIO_SAMPLE_RATE,
-+                    channels=1,
-+                    smart_format=True,
-+                    interim_results=True,
-+                )
-+            else:
-+                raise AttributeError("ListenClient has no attribute 'v2'")
-+        except Exception as e:
-+            raise RuntimeError(f"Failed to initialize Deepgram Flux connection: {e}")
 
         async def on_transcript(result, **kwargs):
             "Handle transcript results from Flux"
@@ -165,10 +163,22 @@ class DeepgramTranscriber:
 
         # Start Flux connection with smart turn detection parameters
         try:
-            await self.dg_connection.start(self.options, 
-                                         eot_threshold=self.eot_threshold,
-                                         eager_eot_threshold=self.eager_eot_threshold,
-                                         eot_timeout_ms=self.eot_timeout_ms)
+            # v5 typically uses start_listening; attempt that first
+            start_listening = getattr(self.dg_connection, 'start_listening', None)
+            if callable(start_listening):
+                start_listening()
+            else:
+                # Fall back to start with parameters if supported
+                start_fn = getattr(self.dg_connection, 'start', None)
+                if start_fn is not None:
+                    res = start_fn(self.options)
+                    if hasattr(res, '__await__'):
+                        await res
+                else:
+                    # As last resort, try without params
+                    res2 = self.dg_connection.start(self.options)
+                    if hasattr(res2, '__await__'):
+                        await res2
         except Exception as e:
             msg = str(e).lower()
             if 'already started' in msg:
@@ -179,37 +189,6 @@ class DeepgramTranscriber:
         else:
             self.started = True
         print('Deepgram Flux Transcriber Connected')
-+        # Start Flux connection with smart turn detection parameters
-+        try:
-+            # v5 typically uses start_listening; attempt that first
-+            start_listening = getattr(self.dg_connection, 'start_listening', None)
-+            if callable(start_listening):
-+                start_listening()
-+            else:
-+                # Fall back to start with parameters if supported
-+                start_fn = getattr(self.dg_connection, 'start', None)
-+                if start_fn is not None:
-+                    res = start_fn(self.options,
-+                                   eot_threshold=self.eot_threshold,
-+                                   eager_eot_threshold=self.eager_eot_threshold,
-+                                   eot_timeout_ms=self.eot_timeout_ms)
-+                    if hasattr(res, '__await__'):
-+                        await res
-+                else:
-+                    # As last resort, try without params
-+                    res2 = self.dg_connection.start(self.options)
-+                    if hasattr(res2, '__await__'):
-+                        await res2
-+        except Exception as e:
-+            msg = str(e).lower()
-+            if 'already started' in msg:
-+                print('Deepgram Flux connection already started; using existing connection')
-+                self.started = True
-+            else:
-+                raise
-+        else:
-+            self.started = True
-+        print('Deepgram Flux Transcriber Connected')
     
     async def deepgram_close(self):
         "Close Deepgram Connection"
