@@ -29,18 +29,6 @@ class DeepgramTranscriber:
         self.eot_threshold = float(os.getenv("DEEPGRAM_EOT_THRESHOLD", "0.7"))
         self.eager_eot_threshold = float(os.getenv("DEEPGRAM_EAGER_EOT_THRESHOLD", "0.6"))
         self.eot_timeout_ms = int(os.getenv("DEEPGRAM_EOT_TIMEOUT_MS", "2000"))
-
-        # Build options for Flux v2 LiveOptions
-        self.options: LiveOptions = LiveOptions(
-            model="flux-general-en",
-            language="en-US",
-            smart_format=True,
-            encoding=ENCODING,
-            channels=1,
-            sample_rate=TWILIO_SAMPLE_RATE,
-            interim_results=True,
-            punctuate=True,
-        )
     
     async def deepgram_connect(self):
         # If already started, do not reinitialize or restart
