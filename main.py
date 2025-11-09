@@ -16,7 +16,7 @@ TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
 
 # Twilio sends audio data as 160 byte messages containing 20ms of audio each
 # We buffer 3 twilio messages corresponding to 60 ms of audio
-BUFFER_SIZE = 3 * 160
+BUFFER_SIZE = 4 * 160  # 80ms chunks recommended for Flux
 TWILIO_SAMPLE_RATE = 8000
 
 
