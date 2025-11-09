@@ -7,11 +7,11 @@ import re
 
 # Deepgram SDK imports for Flux v2
 -from deepgram import DeepgramClient, LiveOptions
-+from deepgram import DeepgramClient, LiveOptions
-+try:
-+    from deepgram.core.events import EventType
-+except Exception:
-+    EventType = None
++from deepgram import DeepgramClient
+try:
+    from deepgram.core.events import EventType
+except Exception:
+    EventType = None
 
 # Audio format constants for telephony compatibility with Flux
 # Flux supports mulaw at 8000Hz for telephony applications
@@ -38,17 +38,18 @@ class DeepgramTranscriber:
         self.eager_eot_threshold = float(os.getenv("DEEPGRAM_EAGER_EOT_THRESHOLD", "0.6"))
         self.eot_timeout_ms = int(os.getenv("DEEPGRAM_EOT_TIMEOUT_MS", "2000"))
 
-        # Build options for Flux v2 LiveOptions
-        self.options: LiveOptions = LiveOptions(
-            model="flux-general-en",
-            language="en-US",
-            smart_format=True,
-            encoding=ENCODING,
-            channels=1,
-            sample_rate=TWILIO_SAMPLE_RATE,
-            interim_results=True,
-            punctuate=True,
-        )
+-        # Build options for Flux v2 LiveOptions
+-        self.options: LiveOptions = LiveOptions(
+-            model="flux-general-en",
+-            language="en-US",
+-            smart_format=True,
+-            encoding=ENCODING,
+-            channels=1,
+-            sample_rate=TWILIO_SAMPLE_RATE,
+-            interim_results=True,
+-            punctuate=True,
+-        )
++        # No LiveOptions in v5 Flux; parameters are passed to v2.connect
     
     async def deepgram_connect(self):
         # If already started, do not reinitialize or restart
@@ -161,24 +162,19 @@ class DeepgramTranscriber:
             except Exception:
                 pass
 
-        # Start Flux connection with smart turn detection parameters
+        # Start Flux connection
         try:
             # v5 typically uses start_listening; attempt that first
             start_listening = getattr(self.dg_connection, 'start_listening', None)
             if callable(start_listening):
                 start_listening()
             else:
-                # Fall back to start with parameters if supported
+                # Fall back to start if supported
                 start_fn = getattr(self.dg_connection, 'start', None)
                 if start_fn is not None:
-                    res = start_fn(self.options)
+                    res = start_fn()
                     if hasattr(res, '__await__'):
                         await res
-                else:
-                    # As last resort, try without params
-                    res2 = self.dg_connection.start(self.options)
-                    if hasattr(res2, '__await__'):
-                        await res2
         except Exception as e:
             msg = str(e).lower()
             if 'already started' in msg:
@@ -210,8 +206,6 @@ class DeepgramTranscriber:
         except Exception as e:
             # Swallow errors during shutdown to avoid crashing ASGI
             print(f'Deepgram close error: {e}')
-           
-
 
     async def send_audio(self, audio_bytes: bytes):
         """Send audio buffer to Deepgram connection, supporting async/sync send methods."""
