@@ -8,10 +8,11 @@ import re
 # Deepgram SDK imports for Flux v2
 from deepgram import DeepgramClient, LiveOptions
 
-# Audio format constants for telephony compatibility with Flux
-# Flux supports mulaw at 8000Hz for telephony applications
-TWILIO_SAMPLE_RATE = 8000  # Standard telephony sample rate
-ENCODING = "mulaw"  # Telephony encoding format, compatible with Flux
+# Audio format constants for Flux
+# Flux supports mulaw at 8000Hz; Twilio sends mulaw at 8000Hz.
+# We send Twilio's mulaw 8k audio directly without conversion.
+TWILIO_SAMPLE_RATE = 8000  # Flux mulaw sample rate
+ENCODING = "mulaw"  # Flux-supported PCM encoding
 
 class DeepgramTranscriber:
     def __init__(self, assistant: LargeLanguageModel, ws: WebSocket, stream_sid):
@@ -139,6 +140,20 @@ class DeepgramTranscriber:
         else:
             self.started = True
         print('Deepgram Flux Transcriber Connected')
+
+    async def send_audio(self, audio_data: bytes):
+        """
+        Send Twilio mulaw 8k audio directly to Deepgram Flux.
+        - Twilio yields 160-byte mulaw frames (20ms at 8kHz). We buffer upstream to ~80ms.
+        - Flux supports `encoding=mulaw` and `sample_rate=8000`, so no conversion is needed.
+        """
+        if not self.dg_connection or not self.started:
+            return
+
+        try:
+            await self.dg_connection.send(audio_data)
+        except Exception as e:
+            print(f"Deepgram send_audio error: {e}")
     
     async def deepgram_close(self):
         "Close Deepgram Connection"
