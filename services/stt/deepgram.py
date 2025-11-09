@@ -6,12 +6,7 @@ from services.llm.openai_async import LargeLanguageModel
 import re
 
 # Deepgram SDK imports for Flux v2
--from deepgram import DeepgramClient, LiveOptions
-+from deepgram import DeepgramClient
-try:
-    from deepgram.core.events import EventType
-except Exception:
-    EventType = None
+from deepgram import DeepgramClient, LiveOptions
 
 # Audio format constants for telephony compatibility with Flux
 # Flux supports mulaw at 8000Hz for telephony applications
@@ -38,18 +33,17 @@ class DeepgramTranscriber:
         self.eager_eot_threshold = float(os.getenv("DEEPGRAM_EAGER_EOT_THRESHOLD", "0.6"))
         self.eot_timeout_ms = int(os.getenv("DEEPGRAM_EOT_TIMEOUT_MS", "2000"))
 
--        # Build options for Flux v2 LiveOptions
--        self.options: LiveOptions = LiveOptions(
--            model="flux-general-en",
--            language="en-US",
--            smart_format=True,
--            encoding=ENCODING,
--            channels=1,
--            sample_rate=TWILIO_SAMPLE_RATE,
--            interim_results=True,
--            punctuate=True,
--        )
-+        # No LiveOptions in v5 Flux; parameters are passed to v2.connect
+        # Build options for Flux v2 LiveOptions
+        self.options: LiveOptions = LiveOptions(
+            model="flux-general-en",
+            language="en-US",
+            smart_format=True,
+            encoding=ENCODING,
+            channels=1,
+            sample_rate=TWILIO_SAMPLE_RATE,
+            interim_results=True,
+            punctuate=True,
+        )
     
     async def deepgram_connect(self):
         # If already started, do not reinitialize or restart
@@ -59,20 +53,7 @@ class DeepgramTranscriber:
         
         # Create Flux v2 connection
         try:
-            if hasattr(self.deepgram.listen, 'v2'):
-                self.dg_connection = self.deepgram.listen.v2.connect(
-                    model="flux-general-en",
-                    encoding=ENCODING,
-                    sample_rate=TWILIO_SAMPLE_RATE,
-                    channels=1,
-                    smart_format=True,
-                    interim_results=True,
-                    eot_threshold=self.eot_threshold,
-                    eager_eot_threshold=self.eager_eot_threshold,
-                    eot_timeout_ms=self.eot_timeout_ms,
-                )
-            else:
-                raise AttributeError("ListenClient has no attribute 'v2'")
+            self.dg_connection = self.deepgram.listen.v2.connect()
         except Exception as e:
             raise RuntimeError(f"Failed to initialize Deepgram Flux connection: {e}")
 
@@ -137,44 +118,17 @@ class DeepgramTranscriber:
         on_turn_resumed_kwargs = partial(on_turn_resumed)
         
         # Register Flux event handlers
-        try:
-            self.dg_connection.on('Transcript', on_transcript_kwargs)
-            self.dg_connection.on('EndOfTurn', on_end_of_turn_kwargs)
-            self.dg_connection.on('EagerEndOfTurn', on_eager_end_of_turn_kwargs)
-            self.dg_connection.on('TurnResumed', on_turn_resumed_kwargs)
-        except Exception:
-            pass
-        # Generic event stream fallback if EventType is available
-        if EventType is not None:
-            try:
-                async def on_message(event):
-                    etype = getattr(event, 'type', None) or getattr(event, 'event', None)
-                    payload = getattr(event, 'payload', None) or event
-                    if etype == 'Transcript':
-                        await on_transcript_kwargs(payload)
-                    elif etype == 'EndOfTurn':
-                        await on_end_of_turn_kwargs(payload)
-                    elif etype == 'EagerEndOfTurn':
-                        await on_eager_end_of_turn_kwargs(payload)
-                    elif etype == 'TurnResumed':
-                        await on_turn_resumed_kwargs(payload)
-                self.dg_connection.on(EventType.MESSAGE, on_message)
-            except Exception:
-                pass
+        self.dg_connection.on('Transcript', on_transcript_kwargs)
+        self.dg_connection.on('EndOfTurn', on_end_of_turn_kwargs)
+        self.dg_connection.on('EagerEndOfTurn', on_eager_end_of_turn_kwargs)
+        self.dg_connection.on('TurnResumed', on_turn_resumed_kwargs)
 
-        # Start Flux connection
+        # Start Flux connection with smart turn detection parameters
         try:
-            # v5 typically uses start_listening; attempt that first
-            start_listening = getattr(self.dg_connection, 'start_listening', None)
-            if callable(start_listening):
-                start_listening()
-            else:
-                # Fall back to start if supported
-                start_fn = getattr(self.dg_connection, 'start', None)
-                if start_fn is not None:
-                    res = start_fn()
-                    if hasattr(res, '__await__'):
-                        await res
+            await self.dg_connection.start(self.options, 
+                                         eot_threshold=self.eot_threshold,
+                                         eager_eot_threshold=self.eager_eot_threshold,
+                                         eot_timeout_ms=self.eot_timeout_ms)
         except Exception as e:
             msg = str(e).lower()
             if 'already started' in msg:
@@ -206,20 +160,5 @@ class DeepgramTranscriber:
         except Exception as e:
             # Swallow errors during shutdown to avoid crashing ASGI
             print(f'Deepgram close error: {e}')
-
-    async def send_audio(self, audio_bytes: bytes):
-        """Send audio buffer to Deepgram connection, supporting async/sync send methods."""
-        if not (self.dg_connection and self.started):
-            return
-        try:
-            send_fn = getattr(self.dg_connection, 'send', None)
-            if send_fn is None:
-                return
-            res = send_fn(audio_bytes)
-            if hasattr(res, '__await__'):
-                await res
-        except Exception as e:
-            # Log and continue; audio drops rather than crash
-            print(f"Deepgram send_audio error: {e}")
            
 
