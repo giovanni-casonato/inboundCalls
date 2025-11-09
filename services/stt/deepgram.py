@@ -41,7 +41,7 @@ class DeepgramTranscriber:
             return
         
         # Create Flux v2 connection
-        self.dg_connection = await self.deepgram.listen.v2.connect(
+        self.dg_connection = self.deepgram.listen.v2.connect(
             model="flux-general-en",
             encoding=ENCODING,
             sample_rate=TWILIO_SAMPLE_RATE,
