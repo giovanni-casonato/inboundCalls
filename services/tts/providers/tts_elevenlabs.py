@@ -44,3 +44,4 @@ class ElevenLabsTTS(TTSProvider):
         except Exception as e:
             # Encode to base64 for Twilio
             payload_b64 = base64.b64encode(audio_stream).decode('utf-8')
+            print(f"Error encoding audio to base64: {e} - payload: {payload_b64}")
