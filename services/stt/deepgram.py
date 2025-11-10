@@ -1,14 +1,16 @@
 import os
 import re
 import json
-from typing import List, Optional
+from typing import List
 from fastapi import WebSocket
 
-from deepgram import AsyncDeepgramClient, LiveTranscriptionEvents
+from deepgram import AsyncDeepgramClient
+from deepgram.core.events import EventType
 from services.llm.openai_async import LargeLanguageModel
 
 TWILIO_SAMPLE_RATE = 8000
 ENCODING = "mulaw"
+
 
 class DeepgramTranscriber:
     """Real-time speech transcription using Deepgram API"""
@@ -18,7 +20,6 @@ class DeepgramTranscriber:
         self.ws = websocket
         self.stream_sid = stream_sid
 
-        # DG client (modern SDK — no DeepgramClientOptions)
         api_key = os.getenv("DEEPGRAM_API_KEY")
         if not api_key:
             raise RuntimeError("Missing DEEPGRAM_API_KEY")
@@ -106,8 +107,8 @@ class DeepgramTranscriber:
             await self.llm.run_chat(user_final)
 
         # Hook up events
-        self.dg_connection.on(LiveTranscriptionEvents.Transcript, on_transcript)
-        self.dg_connection.on(LiveTranscriptionEvents.UtteranceEnd, on_utterance_end)
+        self.dg_connection.on(EventType.TRANSCRIPT, on_transcript)
+        self.dg_connection.on(EventType.UTTERANCE_END, on_utterance_end)
 
         # Start listening
         await self.dg_connection.start_listening()
