@@ -46,7 +46,7 @@ class DeepgramTranscriber:
         if self.dg_connection:
             return
 
-        self.dg_connection = self.deepgram.listen.websocket.v1.connect(**self._connect_kwargs)
+        self.dg_connection = self.deepgram.listen.v1.connect(**self._connect_kwargs)
 
         async def on_transcript(msg):
             """
