@@ -1,144 +1,159 @@
 import os
+import asyncio
 import json
 from fastapi import WebSocket
+from typing import Optional
+from deepgram import (
+    DeepgramClient,
+    LiveTranscriptionEvents,
+    LiveOptions
+)
 from services.llm.openai_async import LargeLanguageModel
-import re
 
-from deepgram import AsyncDeepgramClient
-from deepgram.core.events import EventType
-
-
-TWILIO_SAMPLE_RATE = 8000  # Flux mulaw sample rate
-ENCODING = "mulaw"  # Flux-supported PCM encoding
 
 class DeepgramTranscriber:
-    def __init__(self, assistant: LargeLanguageModel, ws: WebSocket, stream_sid):
-        self.assistant = assistant
-        self.ws = ws
-        self.stream_sid = stream_sid
-
-        # Client & socket
-        api_key = os.getenv("DEEPGRAM_API_KEY")
-        if not api_key:
-            raise RuntimeError("Missing DEEPGRAM_API_KEY")
-        self.deepgram = AsyncDeepgramClient(api_key=api_key)
-        self.dg_connection = None 
-        self._buf_text: List[str] = []
-        self._sentence_flush_regex = re.compile(r"[.!?]$")
-
-        self._closed = False
-
-        # Flux-specific parameters from environment or defaults
-        self.eot_threshold = float(os.getenv("DEEPGRAM_EOT_THRESHOLD", "0.7"))
-        self.eager_eot_threshold = float(os.getenv("DEEPGRAM_EAGER_EOT_THRESHOLD", "0.6"))
-        self.eot_timeout_ms = int(os.getenv("DEEPGRAM_EOT_TIMEOUT_MS", "2000"))
+    """Real-time speech transcription using Deepgram API"""
     
-
-    async def deepgram_connect(self):
-        """Open a Flux v2 listen socket and start receiving events."""
-        if self.dg_connection:
-            print("socket is already initialized")
-            return
+    def __init__(self, llm_instance: LargeLanguageModel, websocket: WebSocket, stream_sid: str):
+        self.llm = llm_instance
+        self.websocket = websocket
+        self.stream_sid = stream_sid
+        self.dg_connection = None
+        self.deepgram_client = None
+        self.is_connected = False
         
-        # Create Flux v2 connection
-        self.dg_connection = self.deepgram.listen.v2.connect(
-            model="flux-general-en",
-            encoding=ENCODING,
-            sample_rate=TWILIO_SAMPLE_RATE,
+        # deepgram websocket options
+        self.options: LiveOptions = LiveOptions(
+            model="nova-3",
+            language="en-US",
+            # Apply smart formatting to the output
+            smart_format=True,
+            # Raw audio format details
+            encoding="mulaw",
+            channels=1,
+            sample_rate=8000,
+            # To get UtteranceEnd, the following must be set:
+            interim_results=True,
+            punctuate=True
         )
 
-        # Single message handler for all server events
-        async def on_message(msg):
-            # msg.type is a string like "Transcript", "EagerEndOfTurn", "EndOfTurn", "TurnResumed"
-            t = getattr(msg, "type", None)
-
-            if t == "Transcript":
-                # SDK sends a flattened object on v2 with .transcript and .is_final
-                text = getattr(msg, "transcript", "") or ""
-                if not text:
-                    return
-
-                if getattr(msg, "is_final", False):
-                    self._buf_text.append(text)
-
-                    # Optional early flush when a final segment ends with punctuation
-                    if self._sentence_flush_regex.search(text):
-                        await self._flush_to_llm(speculative=False)
-
-            # elif t == "EagerEndOfTurn":
-            #     # Start LLM fast; your LLM should support speculative or cancellable output
-            #     if self._buf_text:
-            #         await self._flush_to_llm(speculative=True)
-
-            # elif t == "TurnResumed":
-            #     # User kept talking -> cancel speculative TTS/LLM if supported
-            #     cancel = getattr(self.assistant, "cancel", None)
-            #     if callable(cancel):
-            #         try:
-            #             await cancel()
-            #         except Exception:
-            #             pass  # swallow cancel errors; transcript continues
-
-            # elif t == "EndOfTurn":
-            #     if self._buf_text:
-            #         await self._flush_to_llm(speculative=False)
-
-
-        # Register Flux event handlers
-        self.dg_connection.on(EventType.MESSAGE, on_message)
-
-        await self.dg_connection.start_listening()
-
-
-    async def send_audio(self, audio_data: bytes):
-        """
-        Send Twilio mulaw 8k audio directly to Deepgram Flux.
-        Twilio yields 160-byte mulaw frames (20ms at 8kHz). We buffer upstream to ~80ms.
-        """
-        if not self.dg_connection or self.c:
-            return
-
+    async def deepgram_connect(self):
+        """Initialize connection to Deepgram"""
         try:
-            await self.dg_connection.send(audio_data)
+            # Initialize Deepgram client using API key from environment
+            api_key = os.getenv("DEEPGRAM_API_KEY")
+            if not api_key:
+                raise ValueError("Deepgram API key not found. Set DEEPGRAM_API_KEY env var.")
+
+            self.deepgram_client = DeepgramClient(api_key)
+            
+            # Create live transcription connection
+            self.dg_connection = self.deepgram_client.listen.asyncwebsocket.v("1")
+            
+            # Set up event handlers
+            self.dg_connection.on(LiveTranscriptionEvents.Open, self._on_open)
+            self.dg_connection.on(LiveTranscriptionEvents.Transcript, self._on_message)
+            self.dg_connection.on(LiveTranscriptionEvents.Error, self._on_error)
+            self.dg_connection.on(LiveTranscriptionEvents.Close, self._on_close)
+            self.dg_connection.on(LiveTranscriptionEvents.Warning, self._on_warning)
+            
+            # Start the connection
+            if await self.dg_connection.start(self.options, utterance_end_ms="2000"):
+                print(f"🎤 Connected to Deepgram for stream {self.stream_sid}")
+                self.is_connected = True
+                
+                # Start keepalive task
+                asyncio.create_task(self._send_keepalive())
+            else:
+                print("❌ Failed to start Deepgram connection")
+                
         except Exception as e:
-            print(f"Deepgram send_audio error: {e}")
-    
-
+            print(f"❌ Error connecting to Deepgram: {e}")
+            
+    async def _on_open(self, *args, **kwargs):
+        """Called when Deepgram connection opens"""
+        print("✅ Deepgram WebSocket opened")
+        
+    async def _on_message(self, *args, **kwargs):
+        """Handle incoming transcription results"""
+        try:
+            result = kwargs.get("result")
+            if not result:
+                return
+                
+            # Extract transcript
+            if result.channel and result.channel.alternatives:
+                alternative = result.channel.alternatives[0]
+                transcript = alternative.transcript
+                
+                if transcript:
+                    confidence = alternative.confidence if hasattr(alternative, 'confidence') else 0.0
+                    is_final = result.is_final
+                    
+                    print(f"📝 Transcript ({'FINAL' if is_final else 'interim'}): {transcript}")
+                    
+                    # Process the transcript
+                    await self._handle_transcript(transcript, is_final, confidence)
+                    
+        except Exception as e:
+            print(f"❌ Error processing Deepgram message: {e}")
+            
+    async def _on_error(self, *args, **kwargs):
+        """Handle Deepgram errors"""
+        error = kwargs.get("error")
+        print(f"❌ Deepgram error: {error}")
+        
+    async def _on_close(self, *args, **kwargs):
+        """Handle Deepgram connection close"""
+        print(f"🔌 Deepgram connection closed for stream {self.stream_sid}")
+        self.is_connected = False
+        
+    async def _on_warning(self, *args, **kwargs):
+        """Handle Deepgram warnings"""
+        warning = kwargs.get("warning")
+        print(f"⚠️ Deepgram warning: {warning}")
+        
+    async def _handle_transcript(self, transcript: str, is_final: bool, confidence: float):
+        """Process transcript and send to LLM if final"""
+        if is_final and transcript.strip():
+            print(f"🤖 Sending to LLM: '{transcript}' (confidence: {confidence:.2f})")
+            
+            # Send to your LLM for processing
+            try:
+                await self.llm.run_chat(transcript)
+            except Exception as e:
+                print(f"❌ Error sending to LLM: {e}")
+        elif not is_final:
+            # You can handle interim results here if needed
+            # For example, show typing indicators, real-time feedback, etc.
+            pass
+            
+    async def _send_keepalive(self):
+        """Send periodic keepalive messages to maintain connection"""
+        while self.is_connected:
+            try:
+                await asyncio.sleep(5)  # Send every 5 seconds
+                if self.dg_connection and self.is_connected:
+                    keepalive_msg = {"type": "KeepAlive"}
+                    await self.dg_connection.send(json.dumps(keepalive_msg))
+            except Exception as e:
+                print(f"❌ Keepalive error: {e}")
+                break
+                
+    async def send_audio(self, audio_data: bytes):
+        """Send audio data to Deepgram (alternative to using dg_connection.send directly)"""
+        if self.dg_connection and self.is_connected:
+            try:
+                await self.dg_connection.send(audio_data)
+            except Exception as e:
+                print(f"❌ Error sending audio to Deepgram: {e}")
+                
     async def deepgram_close(self):
-        """Finish the stream gracefully; safe to call multiple times."""
-        if self._closed:
-            return
-        self._closed = True
-
-        try:
-            if self._buf_text:
-                await self._flush_to_llm(speculative=False)
-        except Exception:
-            pass
-
-        try:
-            if self.dg_connection:
+        """Close Deepgram connection"""
+        self.is_connected = False
+        if self.dg_connection:
+            try:
                 await self.dg_connection.finish()
-        finally:
-            self.dg_connection = None
-
-    # HELPERS
-    async def _flush_to_llm(self, speculative: bool):
-        """
-        Clear Twilio's playback buffer, dispatch buffered ASR text to LLM,
-        and reset the local transcript buffer.
-        """
-        text = " ".join(self._buf_text).strip()
-        self._buf_text.clear()
-        if not text:
-            return
-
-        # Interrupt any audio currently queued to caller for fast barge-in
-        try:
-            await self.ws.send_text(json.dumps({"event": "clear", "streamSid": self.stream_sid}))
-        except Exception:
-            # If the WS is gone, we still try to run the LLM (no-op for TTS)
-            pass
-
-        # Your LLM driver should stream TTS back to Twilio through your TTS provider
-        await self.assistant.run_chat(text, speculative=speculative)
+                print(f"🔌 Deepgram connection closed for stream {self.stream_sid}")
+            except Exception as e:
+                print(f"❌ Error closing Deepgram connection: {e}")

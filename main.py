@@ -41,7 +41,6 @@ async def media_stream(websocket: WebSocket):
     """
     await websocket.accept()
     buffer = bytearray(b'')
-    empty_byte_received = False
     transcriber = None
     
     try:
@@ -83,14 +82,10 @@ async def media_stream(websocket: WebSocket):
                         payload_mulaw = base64.b64decode(payload_b64)
                         buffer.extend(payload_mulaw)
                         
-                        if payload_mulaw == b'':
-                            empty_byte_received = True
-                        
                         # Send buffer when it reaches the target size or when silence detected
-                        if len(buffer) >= BUFFER_SIZE or empty_byte_received:
+                        if len(buffer) >= BUFFER_SIZE:
                             await transcriber.send_audio(buffer)
                             buffer = bytearray(b'')
-                            empty_byte_received = False
                             
                 case "stop":
                     print("Call ended")
