@@ -1,27 +1,31 @@
-import os
-import asyncio
 import json
-from fastapi import WebSocket
-from typing import Optional
 from deepgram import (
     DeepgramClient,
+    DeepgramClientOptions,
     LiveTranscriptionEvents,
-    LiveOptions
+    LiveOptions,
 )
+from functools import partial
+from fastapi import WebSocket
 from services.llm.openai_async import LargeLanguageModel
 
+TWILIO_SAMPLE_RATE = 8000
+ENCODING = "mulaw"
 
 class DeepgramTranscriber:
     """Real-time speech transcription using Deepgram API"""
     
     def __init__(self, llm_instance: LargeLanguageModel, websocket: WebSocket, stream_sid: str):
         self.llm = llm_instance
-        self.websocket = websocket
+        self.config: DeepgramClientOptions = DeepgramClientOptions(
+            options={"keepalive": "true"}
+        )
+        self.deepgram: DeepgramClient = DeepgramClient("", self.config)
+        self.dg_connection = None 
+        self.transcripts = []
+        self.ws = ws
         self.stream_sid = stream_sid
-        self.dg_connection = None
-        self.deepgram_client = None
-        self.is_connected = False
-        
+
         # deepgram websocket options
         self.options: LiveOptions = LiveOptions(
             model="nova-3",
@@ -29,131 +33,75 @@ class DeepgramTranscriber:
             # Apply smart formatting to the output
             smart_format=True,
             # Raw audio format details
-            encoding="mulaw",
+            encoding=ENCODING,
             channels=1,
-            sample_rate=8000,
+            sample_rate=TWILIO_SAMPLE_RATE,
             # To get UtteranceEnd, the following must be set:
             interim_results=True,
+            # Time in milliseconds of silence to wait for before finalizing speech
+            utterance_end_ms=2000,
             punctuate=True
         )
 
     async def deepgram_connect(self):
-        """Initialize connection to Deepgram"""
-        try:
-            # Initialize Deepgram client using API key from environment
-            api_key = os.getenv("DEEPGRAM_API_KEY")
-            if not api_key:
-                raise ValueError("Deepgram API key not found. Set DEEPGRAM_API_KEY env var.")
+        self.dg_connection = self.deepgram.listen.asynclive.v("1")
 
-            self.deepgram_client = DeepgramClient(api_key)
-            
-            # Create live transcription connection
-            self.dg_connection = self.deepgram_client.listen.asyncwebsocket.v("1")
-            
-            # Set up event handlers
-            self.dg_connection.on(LiveTranscriptionEvents.Open, self._on_open)
-            self.dg_connection.on(LiveTranscriptionEvents.Transcript, self._on_message)
-            self.dg_connection.on(LiveTranscriptionEvents.Error, self._on_error)
-            self.dg_connection.on(LiveTranscriptionEvents.Close, self._on_close)
-            self.dg_connection.on(LiveTranscriptionEvents.Warning, self._on_warning)
-            
-            # Start the connection
-            if await self.dg_connection.start(self.options, utterance_end_ms="2000"):
-                print(f"🎤 Connected to Deepgram for stream {self.stream_sid}")
-                self.is_connected = True
-                
-                # Start keepalive task
-                asyncio.create_task(self._send_keepalive())
-            else:
-                print("❌ Failed to start Deepgram connection")
-                
-        except Exception as e:
-            print(f"❌ Error connecting to Deepgram: {e}")
-            
-    async def _on_open(self, *args, **kwargs):
-        """Called when Deepgram connection opens"""
-        print("✅ Deepgram WebSocket opened")
+        async def on_message(self, result, **kwargs):
+            "Receive text from deepgram_ws"
+
+            transcripts = kwargs.get('transcripts')
+            assistant: ChatCompletionAssistant = kwargs.get('assistant')
+            ws: WebSocket = kwargs.get('websocket')
+            stream_sid = kwargs.get('stream_sid')
+
+            # Useful for Debugging
+            # print(f"""
+            # Alt Length: {len(result.channel.alternatives)}
+            # sentence: '{result.channel.alternatives[0].transcript}'
+            # speech_final: {result.speech_final}
+            # is_final: {result.is_final}
+            # transcript: {" ".join(transcripts)}
+            # """)
+
+            sentence = result.channel.alternatives[0].transcript
+
+            if result.is_final:
+                # collect final transcripts:
+                if len(sentence) > 0:
+                    transcripts.append(sentence)
+
+                if len(transcripts) > 0 and re.search(r'[.!?]$', sentence):
+                    user_message_final = " ".join(transcripts)
+                    print(f'\nUser: {user_message_final}')
+
+                    # clear audio from assistant on user response
+                    await ws.send_text(json.dumps({'event': 'clear', 'streamSid': f"{stream_sid}"}))
+
+                    await assistant.run_chat_completion(user_message_final)
+                    transcripts.clear()
+
+        async def on_utterance_end(self, utterance_end, **kwargs):
+            transcripts = kwargs.get('transcripts')
+            assistant: ChatCompletionAssistant = kwargs.get('assistant')
+            if len(transcripts) > 0 and re.search(r'[.!?]$', transcripts):
+                user_message_final = " ".join(transcripts)
+                print(f'\nUser: {user_message_final}')
+
+                await assistant.run_chat_completion(user_message_final)
+                transcripts.clear()
+    
+        on_message_with_kwargs = partial(on_message, transcripts=self.transcripts, assistant=self.assistant, websocket=self.ws, stream_sid = self.stream_sid)
+        on_utterance_end_kwargs = partial(on_utterance_end, transcripts=self.transcripts, assistant=self.assistant)
         
-    async def _on_message(self, *args, **kwargs):
-        """Handle incoming transcription results"""
-        try:
-            result = kwargs.get("result")
-            if not result:
-                return
-                
-            # Extract transcript
-            if result.channel and result.channel.alternatives:
-                alternative = result.channel.alternatives[0]
-                transcript = alternative.transcript
-                
-                if transcript:
-                    confidence = alternative.confidence if hasattr(alternative, 'confidence') else 0.0
-                    is_final = result.is_final
-                    
-                    print(f"📝 Transcript ({'FINAL' if is_final else 'interim'}): {transcript}")
-                    
-                    # Process the transcript
-                    await self._handle_transcript(transcript, is_final, confidence)
-                    
-        except Exception as e:
-            print(f"❌ Error processing Deepgram message: {e}")
-            
-    async def _on_error(self, *args, **kwargs):
-        """Handle Deepgram errors"""
-        error = kwargs.get("error")
-        print(f"❌ Deepgram error: {error}")
-        
-    async def _on_close(self, *args, **kwargs):
-        """Handle Deepgram connection close"""
-        print(f"🔌 Deepgram connection closed for stream {self.stream_sid}")
-        self.is_connected = False
-        
-    async def _on_warning(self, *args, **kwargs):
-        """Handle Deepgram warnings"""
-        warning = kwargs.get("warning")
-        print(f"⚠️ Deepgram warning: {warning}")
-        
-    async def _handle_transcript(self, transcript: str, is_final: bool, confidence: float):
-        """Process transcript and send to LLM if final"""
-        if is_final and transcript.strip():
-            print(f"🤖 Sending to LLM: '{transcript}' (confidence: {confidence:.2f})")
-            
-            # Send to your LLM for processing
-            try:
-                await self.llm.run_chat(transcript)
-            except Exception as e:
-                print(f"❌ Error sending to LLM: {e}")
-        elif not is_final:
-            # You can handle interim results here if needed
-            # For example, show typing indicators, real-time feedback, etc.
-            pass
-            
-    async def _send_keepalive(self):
-        """Send periodic keepalive messages to maintain connection"""
-        while self.is_connected:
-            try:
-                await asyncio.sleep(5)  # Send every 5 seconds
-                if self.dg_connection and self.is_connected:
-                    keepalive_msg = {"type": "KeepAlive"}
-                    await self.dg_connection.send(json.dumps(keepalive_msg))
-            except Exception as e:
-                print(f"❌ Keepalive error: {e}")
-                break
-                
-    async def send_audio(self, audio_data: bytes):
-        """Send audio data to Deepgram (alternative to using dg_connection.send directly)"""
-        if self.dg_connection and self.is_connected:
-            try:
-                await self.dg_connection.send(audio_data)
-            except Exception as e:
-                print(f"❌ Error sending audio to Deepgram: {e}")
-                
+        self.dg_connection.on(LiveTranscriptionEvents.Transcript, on_message_with_kwargs)
+        self.dg_connection.on(LiveTranscriptionEvents.UtteranceEnd, on_utterance_end_kwargs)
+
+        await self.dg_connection.start(self.options)
+
+        print('Deepgram Transcriber Connected')
+    
     async def deepgram_close(self):
-        """Close Deepgram connection"""
-        self.is_connected = False
-        if self.dg_connection:
-            try:
-                await self.dg_connection.finish()
-                print(f"🔌 Deepgram connection closed for stream {self.stream_sid}")
-            except Exception as e:
-                print(f"❌ Error closing Deepgram connection: {e}")
+        "Close Deepgram Connection"
+        await self.dg_connection.finish()
+        print(f'\nDeepgram Transcriber Closed\n')
+           
