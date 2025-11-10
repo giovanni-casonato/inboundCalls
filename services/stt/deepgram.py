@@ -1,12 +1,10 @@
+import os
+import re
 import json
-from deepgram import (
-    DeepgramClient,
-    DeepgramClientOptions,
-    LiveTranscriptionEvents,
-    LiveOptions,
-)
-from functools import partial
+from typing import List, Optional
 from fastapi import WebSocket
+
+from deepgram import AsyncDeepgramClient, LiveTranscriptionEvents
 from services.llm.openai_async import LargeLanguageModel
 
 TWILIO_SAMPLE_RATE = 8000
@@ -17,91 +15,132 @@ class DeepgramTranscriber:
     
     def __init__(self, llm_instance: LargeLanguageModel, websocket: WebSocket, stream_sid: str):
         self.llm = llm_instance
-        self.config: DeepgramClientOptions = DeepgramClientOptions(
-            options={"keepalive": "true"}
-        )
-        self.deepgram: DeepgramClient = DeepgramClient("", self.config)
-        self.dg_connection = None 
-        self.transcripts = []
-        self.ws = ws
+        self.ws = websocket
         self.stream_sid = stream_sid
 
-        # deepgram websocket options
-        self.options: LiveOptions = LiveOptions(
-            model="nova-3",
-            language="en-US",
-            # Apply smart formatting to the output
-            smart_format=True,
-            # Raw audio format details
-            encoding=ENCODING,
-            channels=1,
-            sample_rate=TWILIO_SAMPLE_RATE,
-            # To get UtteranceEnd, the following must be set:
-            interim_results=True,
-            # Time in milliseconds of silence to wait for before finalizing speech
-            utterance_end_ms=2000,
-            punctuate=True
-        )
+        # DG client (modern SDK — no DeepgramClientOptions)
+        api_key = os.getenv("DEEPGRAM_API_KEY")
+        if not api_key:
+            raise RuntimeError("Missing DEEPGRAM_API_KEY")
+        self.deepgram = AsyncDeepgramClient(api_key=api_key)
+
+        self.dg_connection = None 
+        self._transcripts: List[str] = []
+
+        # Live connection options (pass as kwargs to connect)
+        self._connect_kwargs = {
+            "model": "nova-3",
+            "language": "en-US",
+            "smart_format": True,
+            "encoding": ENCODING,
+            "channels": 1,
+            "sample_rate": TWILIO_SAMPLE_RATE,
+            "interim_results": True,     # needed to get timely partials
+            "utterance_end_ms": 2000,    # silence that finalizes an utterance
+            "punctuate": True,
+        }
 
     async def deepgram_connect(self):
-        self.dg_connection = self.deepgram.listen.asynclive.v("1")
+        """Open the Nova-3 websocket and register event handlers."""
+        if self.dg_connection:
+            return
 
-        async def on_message(self, result, **kwargs):
-            "Receive text from deepgram_ws"
+        self.dg_connection = self.deepgram.listen.websocket.v1.connect(**self._connect_kwargs)
 
-            transcripts = kwargs.get('transcripts')
-            assistant: ChatCompletionAssistant = kwargs.get('assistant')
-            ws: WebSocket = kwargs.get('websocket')
-            stream_sid = kwargs.get('stream_sid')
+        async def on_transcript(msg):
+            """
+            Handle Transcript events: collect finalized sentences; on sentence end,
+            flush to LLM and clear transcripts.
+            """
+            # Defensive guards: not all events carry the same payload shape
+            try:
+                sentence: str = msg.channel.alternatives[0].transcript or ""
+            except Exception:
+                return
 
-            # Useful for Debugging
-            # print(f"""
-            # Alt Length: {len(result.channel.alternatives)}
-            # sentence: '{result.channel.alternatives[0].transcript}'
-            # speech_final: {result.speech_final}
-            # is_final: {result.is_final}
-            # transcript: {" ".join(transcripts)}
-            # """)
+            if not sentence:
+                return
 
-            sentence = result.channel.alternatives[0].transcript
+            if getattr(msg, "is_final", False):
+                self._transcripts.append(sentence)
 
-            if result.is_final:
-                # collect final transcripts:
-                if len(sentence) > 0:
-                    transcripts.append(sentence)
+                # Flush on sentence boundary to keep latency low
+                if re.search(r"[.!?]$", sentence):
+                    user_final = " ".join(self._transcripts).strip()
+                    if user_final:
+                        # Clear any assistant audio on the Twilio side
+                        try:
+                            await self.ws.send_text(json.dumps({
+                                "event": "clear",
+                                "streamSid": self.stream_sid
+                            }))
+                        except Exception:
+                            pass
 
-                if len(transcripts) > 0 and re.search(r'[.!?]$', sentence):
-                    user_message_final = " ".join(transcripts)
-                    print(f'\nUser: {user_message_final}')
+                        # Kick the LLM (your openai_async.py implements run_chat)
+                        await self.llm.run_chat(user_final)
 
-                    # clear audio from assistant on user response
-                    await ws.send_text(json.dumps({'event': 'clear', 'streamSid': f"{stream_sid}"}))
+                    self._transcripts.clear()
 
-                    await assistant.run_chat_completion(user_message_final)
-                    transcripts.clear()
+        async def on_utterance_end(_msg):
+            """
+            If DG finalizes an utterance (silence), flush whatever we buffered,
+            even if it didn't end with punctuation.
+            """
+            if not self._transcripts:
+                return
 
-        async def on_utterance_end(self, utterance_end, **kwargs):
-            transcripts = kwargs.get('transcripts')
-            assistant: ChatCompletionAssistant = kwargs.get('assistant')
-            if len(transcripts) > 0 and re.search(r'[.!?]$', transcripts):
-                user_message_final = " ".join(transcripts)
-                print(f'\nUser: {user_message_final}')
+            user_final = " ".join(self._transcripts).strip()
+            self._transcripts.clear()
+            if not user_final:
+                return
 
-                await assistant.run_chat_completion(user_message_final)
-                transcripts.clear()
-    
-        on_message_with_kwargs = partial(on_message, transcripts=self.transcripts, assistant=self.assistant, websocket=self.ws, stream_sid = self.stream_sid)
-        on_utterance_end_kwargs = partial(on_utterance_end, transcripts=self.transcripts, assistant=self.assistant)
-        
-        self.dg_connection.on(LiveTranscriptionEvents.Transcript, on_message_with_kwargs)
-        self.dg_connection.on(LiveTranscriptionEvents.UtteranceEnd, on_utterance_end_kwargs)
+            try:
+                await self.ws.send_text(json.dumps({
+                    "event": "clear",
+                    "streamSid": self.stream_sid
+                }))
+            except Exception:
+                pass
 
-        await self.dg_connection.start(self.options)
+            await self.llm.run_chat(user_final)
 
-        print('Deepgram Transcriber Connected')
-    
+        # Hook up events
+        self.dg_connection.on(LiveTranscriptionEvents.Transcript, on_transcript)
+        self.dg_connection.on(LiveTranscriptionEvents.UtteranceEnd, on_utterance_end)
+
+        # Start listening
+        await self.dg_connection.start_listening()
+        print("Deepgram Transcriber Connected (Nova-3)")
+
+    async def send_audio(self, audio_bytes: bytes):
+        """Forward raw μ-law 8k chunks to Deepgram (e.g., every ~80 ms)."""
+        if not self.dg_connection or not audio_bytes:
+            return
+        try:
+            await self.dg_connection.send(audio_bytes)
+        except Exception as e:
+            print(f"Deepgram send_audio error: {e}")
+
     async def deepgram_close(self):
-        "Close Deepgram Connection"
-        await self.dg_connection.finish()
-        print(f'\nDeepgram Transcriber Closed\n')
-           
+        """Finish the stream gracefully; flush any pending text."""
+        # Flush remaining transcript if any
+        if self._transcripts:
+            user_final = " ".join(self._transcripts).strip()
+            self._transcripts.clear()
+            if user_final:
+                try:
+                    await self.ws.send_text(json.dumps({
+                        "event": "clear",
+                        "streamSid": self.stream_sid
+                    }))
+                except Exception:
+                    pass
+                await self.llm.run_chat(user_final)
+
+        if self.dg_connection:
+            try:
+                await self.dg_connection.finish()
+            finally:
+                self.dg_connection = None
+        print("Deepgram Transcriber Closed")
