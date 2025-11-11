@@ -24,7 +24,6 @@ class ElevenLabsTTS(TTSProvider):
             # Get audio data directly in μ-law 8kHz format
             audio_stream = self.client.text_to_speech.stream(
                 text=text,
-                enable_optimization=True,
                 voice_id=self.voice_id,
                 model_id="eleven_turbo_v2_5",
                 output_format="ulaw_8000"  # Request μ-law 8kHz directly
@@ -47,5 +46,14 @@ class ElevenLabsTTS(TTSProvider):
             return True
                 
         except Exception as e:
-            # Encode to base64 for Twilio
-            payload_b64 = base64.b64encode(audio_stream).decode('utf-8')
+            err_msg = f"Error in ElevenLabs TTS: {str(e)}"
+            print(err_msg)
+            try:
+                await self.ws.send_text(json.dumps({
+                    'event': 'error',
+                    'streamSid': f"{self.stream_sid}",
+                    'message': err_msg
+                }))
+            except Exception:
+                pass
+            return False

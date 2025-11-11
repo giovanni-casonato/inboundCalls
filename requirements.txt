@@ -9,8 +9,3 @@ elevenlabs
 scipy
 audioop-lts
 groq
-# Google Calendar dependencies
-google-auth
-google-auth-oauthlib
-google-auth-httplib2
-google-api-python-client
