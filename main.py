@@ -67,8 +67,8 @@ async def media_stream(websocket: WebSocket):
                     print("2. After init openai")
 
                     # Initialize speech transcriber
-                    transcriber = DeepgramTranscriber(openai_llm, websocket, stream_sid)
-                    await transcriber.deepgram_connect()
+                    # transcriber = DeepgramTranscriber(openai_llm, websocket, stream_sid)
+                    # await transcriber.deepgram_connect()
                     
                     print("3. After init deepgram")
                     
