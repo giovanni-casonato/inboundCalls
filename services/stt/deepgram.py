@@ -36,7 +36,11 @@ class DeepgramTranscriber:
         )
 
     async def deepgram_connect(self):
+        print("Before connecting to Deepgram")
+        
         self.conn = await self.dg.listen.v1.connect(**self._opts)
+
+        print("Deepgram connection established")
 
         def on_message(msg: ListenV1SocketClientResponse) -> None:
             t = getattr(msg, "type", None)
