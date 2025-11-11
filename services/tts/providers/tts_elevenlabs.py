@@ -19,7 +19,6 @@ class ElevenLabsTTS(TTSProvider):
         if not text or not text.strip():
             return True
 
-        print(f"Requesting audio for text: {text}")
         try:
             # Get audio data directly in μ-law 8kHz format
             audio_stream = self.client.text_to_speech.stream(
@@ -28,7 +27,6 @@ class ElevenLabsTTS(TTSProvider):
                 model_id="eleven_turbo_v2_5",
                 output_format="ulaw_8000"  # Request μ-law 8kHz directly
             )
-            print(f"Received audio stream: {audio_stream}")
             for chunk in audio_stream:
                 if isinstance(chunk, bytes):
                     # Encode to base64 for Twilio
