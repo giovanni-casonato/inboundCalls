@@ -19,12 +19,12 @@ class ElevenLabsTTS(TTSProvider):
         if not text or not text.strip():
             return True
 
-        audio_stream = None
         print(f"Requesting audio for text: {text}")
         try:
             # Get audio data directly in μ-law 8kHz format
             audio_stream = self.client.text_to_speech.stream(
                 text=text,
+                enable_optimization=True,
                 voice_id=self.voice_id,
                 model_id="eleven_turbo_v2_5",
                 output_format="ulaw_8000"  # Request μ-law 8kHz directly
