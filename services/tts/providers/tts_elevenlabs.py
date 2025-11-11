@@ -16,6 +16,11 @@ class ElevenLabsTTS(TTSProvider):
         self.voice_id = "UgBBYS2sOqTuMpoF3BR0"
         
     async def get_audio_from_text(self, text: str) -> bool:
+        if not text or not text.strip():
+            return True
+
+        audio_stream = None
+        print(f"Requesting audio for text: {text}")
         try:
             # Get audio data directly in μ-law 8kHz format
             audio_stream = self.client.text_to_speech.stream(
@@ -24,7 +29,7 @@ class ElevenLabsTTS(TTSProvider):
                 model_id="eleven_turbo_v2_5",
                 output_format="ulaw_8000"  # Request μ-law 8kHz directly
             )
-            
+            print(f"Received audio stream: {audio_stream}")
             for chunk in audio_stream:
                 if isinstance(chunk, bytes):
                     # Encode to base64 for Twilio
@@ -44,4 +49,3 @@ class ElevenLabsTTS(TTSProvider):
         except Exception as e:
             # Encode to base64 for Twilio
             payload_b64 = base64.b64encode(audio_stream).decode('utf-8')
-            print(f"Error encoding audio to base64: {e} - payload: {payload_b64}")
