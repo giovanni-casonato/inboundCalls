@@ -48,12 +48,3 @@ class ElevenLabsTTS(TTSProvider):
         except Exception as e:
             err_msg = f"Error in ElevenLabs TTS: {str(e)}"
             print(err_msg)
-            try:
-                await self.ws.send_text(json.dumps({
-                    'event': 'error',
-                    'streamSid': f"{self.stream_sid}",
-                    'message': err_msg
-                }))
-            except Exception:
-                pass
-            return False
