@@ -75,7 +75,7 @@ class DeepgramTranscriber:
                             break
 
                 asyncio.create_task(keepalive())
-                asyncio.create_task(keepalive())  # <– this blocks until connection closes
+                asyncio.create_task(self.conn.start_listening())  # <– this blocks until connection closes
         except Exception as e:
             print(f"Deepgram connection error: {e}")
         finally:
