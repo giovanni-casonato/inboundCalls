@@ -42,7 +42,7 @@ class DeepgramTranscriber:
                 def on_message(msg: ListenV1SocketClientResponse) -> None:
                     t = getattr(msg, "type", None)
                     print(f"Deepgram message type: {t}")
-                    if t == "Results":
+                    if t == "Transcript":
                         try:
                             text = msg.channel.alternatives[0].transcript or ""
                             print(f"Deepgram transcript: {text}")
@@ -74,8 +74,14 @@ class DeepgramTranscriber:
                         except Exception:
                             break
 
-                asyncio.create_task(keepalive())
-                asyncio.create_task(self.conn.start_listening())  # <– this blocks until connection closes
+                # Send an immediate KeepAlive so Deepgram sees a control frame quickly
+                try:
+                    await self.conn.send_control(ListenV1ControlMessage(type="KeepAlive"))
+                except Exception:
+                    pass
+                self._keepalive_task = asyncio.create_task(keepalive())
+                # Start read loop in background so Twilio media handling continues
+                asyncio.create_task(self.conn.start_listening())
         except Exception as e:
             print(f"Deepgram connection error: {e}")
         finally:
