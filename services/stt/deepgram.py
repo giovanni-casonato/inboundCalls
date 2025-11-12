@@ -20,7 +20,7 @@ class DeepgramTranscriber:
         self.stream_sid = stream_sid
         self.dg = AsyncDeepgramClient(api_key=os.environ["DEEPGRAM_API_KEY"])
         self._buf: List[str] = []
-        self._conn = None
+        self.conn = None
         self._keepalive_task: asyncio.Task | None = None
         self._listening = False
         self._opts = dict(
