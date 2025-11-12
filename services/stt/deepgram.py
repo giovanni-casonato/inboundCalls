@@ -35,42 +35,40 @@ class DeepgramTranscriber:
             punctuate=True,
         )
 
-    async def deepgram_connect(self):
-        print("Before connecting to Deepgram")
-        
-        self.conn = self.dg.listen.v1.connect(**self._opts)
+    async def deepgram_connect(self):        
+        try:
+            async with self.dg.listen.v1.connect(**self._opts) as conn:
+                def on_message(msg: ListenV1SocketClientResponse) -> None:
+                    t = getattr(msg, "type", None)
 
-        print("Deepgram connection established")
+                    if t == "Results":
+                        try:
+                            text = msg.channel.alternatives[0].transcript or ""
+                        except Exception:
+                            return
+                        if not text:
+                            return
 
-        def on_message(msg: ListenV1SocketClientResponse) -> None:
-            t = getattr(msg, "type", None)
+                        if getattr(msg, "is_final", False):
+                            self._buf.append(text)
+                            if re.search(r"[.!?]$", text):
+                                asyncio.create_task(self._flush_to_llm())
 
-            if t == "Results":
-                try:
-                    text = msg.channel.alternatives[0].transcript or ""
-                except Exception:
-                    return
-                if not text:
-                    return
+                    elif t == "UtteranceEnd":
+                        if self._buf:
+                            asyncio.create_task(self._flush_to_llm())
 
-                if getattr(msg, "is_final", False):
-                    self._buf.append(text)
-                    if re.search(r"[.!?]$", text):
-                        asyncio.create_task(self._flush_to_llm())
+            self.conn.on(EventType.OPEN, lambda _: print("Connection opened"))
+            self.conn.on(EventType.MESSAGE, on_message)
+            self.conn.on(EventType.CLOSE, lambda _: print("Connection closed"))
+            self.conn.on(EventType.ERROR, lambda error: print(f"Caught: {error}"))
 
-            elif t == "UtteranceEnd":
-                if self._buf:
-                    asyncio.create_task(self._flush_to_llm())
-
-        self.conn.on(EventType.OPEN, lambda _: print("Connection opened"))
-        self.conn.on(EventType.MESSAGE, on_message)
-        self.conn.on(EventType.CLOSE, lambda _: print("Connection closed"))
-        self.conn.on(EventType.ERROR, lambda error: print(f"Caught: {error}"))
-
-        # Start listening
-        await self.conn.start_listening()
-        self._listening = True
-        self._keepalive_task = asyncio.create_task(self._keepalive_loop())
+            # Start listening
+            await self.conn.start_listening()
+            self._listening = True
+            self._keepalive_task = asyncio.create_task(self._keepalive_loop())
+        except Exception as e:
+            print(f"Deepgram connection error: {e}")
 
     async def _keepalive_loop(self):
         try:
