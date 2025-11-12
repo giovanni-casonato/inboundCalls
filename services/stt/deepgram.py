@@ -6,6 +6,7 @@ from deepgram import AsyncDeepgramClient
 from deepgram.core.events import EventType
 from deepgram.extensions.types.sockets import (
     ListenV1MediaMessage,
+    ListenV1ControlMessage,
     ListenV1SocketClientResponse,
 )
 from services.llm.openai_async import LargeLanguageModel
@@ -40,7 +41,7 @@ class DeepgramTranscriber:
             async with self.dg.listen.v1.connect(**self._opts) as self.conn:
                 def on_message(msg: ListenV1SocketClientResponse):
                     t = getattr(msg, "type", None)
-                    if t == "Results":
+                    if t == "Transcript":
                         try:
                             text = msg.channel.alternatives[0].transcript or ""
                         except Exception:
@@ -55,23 +56,23 @@ class DeepgramTranscriber:
                         if self._buf:
                             asyncio.create_task(self._flush_to_llm())
 
-                self.conn.on(EventType.OPEN, lambda _: print("Connection opened"))
+                self.conn.on(EventType.OPEN, lambda *_: print("Deepgram connection opened"))
                 self.conn.on(EventType.MESSAGE, on_message)
-                self.conn.on(EventType.CLOSE, lambda _: print("Connection closed"))
-                self.conn.on(EventType.ERROR, lambda error: print(f"Caught: {error}"))
+                self.conn.on(EventType.CLOSE, lambda *_: print("Deepgram connection closed"))
+                self.conn.on(EventType.ERROR, lambda error: print(f"Deepgram error: {error}"))
 
                 self._listening = True
 
                 # keepalive loop
                 async def keepalive():
                     while self._listening:
-                        await asyncio.sleep(15)
+                        await asyncio.sleep(5)
                         try:
-                            await conn.send_control(ListenV1ControlMessage(type="KeepAlive"))
+                            await self.conn.send_control(ListenV1ControlMessage(type="KeepAlive"))
                         except Exception:
                             break
-                asyncio.create_task(keepalive())
-                await conn.start_listening()
+                self._keepalive_task = asyncio.create_task(keepalive())
+                await self.conn.start_listening()
         except Exception as e:
             print(f"Deepgram connection error: {e}")
         finally:
@@ -103,4 +104,4 @@ class DeepgramTranscriber:
             self._keepalive_task.cancel()
 
         if self._buf:
-            await self._buf.clear()
+            self._buf.clear()
