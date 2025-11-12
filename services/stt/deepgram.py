@@ -22,7 +22,7 @@ class DeepgramTranscriber:
         self.dg = AsyncDeepgramClient(api_key=os.environ["DEEPGRAM_API_KEY"])
         self._buf: List[str] = []
         self.conn = None
-        self.listen_task = asyncio.Task | None = None
+        self.listen_task = None
         self._listening = False
         self._opts = dict(
             model="nova-3",
