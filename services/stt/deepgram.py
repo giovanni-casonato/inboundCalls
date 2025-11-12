@@ -22,7 +22,6 @@ class DeepgramTranscriber:
         self.dg = AsyncDeepgramClient(api_key=os.environ["DEEPGRAM_API_KEY"])
         self._buf: List[str] = []
         self.conn = None
-        self._keepalive_task: asyncio.Task | None = None
         self._listening = False
         self._opts = dict(
             model="nova-3",
@@ -78,9 +77,6 @@ class DeepgramTranscriber:
                 asyncio.create_task(self.conn.start_listening())  # <– this blocks until connection closes
         except Exception as e:
             print(f"Deepgram connection error: {e}")
-        finally:
-            self._listening = False
-            self.conn = None
 
     async def send_audio(self, audio_bytes: bytes):
         try:
@@ -102,9 +98,10 @@ class DeepgramTranscriber:
         await self.llm.run_chat(text)
 
     async def deepgram_close(self):
-        self._listening = False
-        if self._keepalive_task:
-            self._keepalive_task.cancel()
+        if self.conn:
+            await self.conn.stop_listening()
+            self.conn = None
+            self._listening = False
 
         if self._buf:
             self._buf.clear()
