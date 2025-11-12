@@ -58,15 +58,15 @@ class DeepgramTranscriber:
                         if self._buf:
                             asyncio.create_task(self._flush_to_llm())
 
-            self.conn.on(EventType.OPEN, lambda _: print("Connection opened"))
-            self.conn.on(EventType.MESSAGE, on_message)
-            self.conn.on(EventType.CLOSE, lambda _: print("Connection closed"))
-            self.conn.on(EventType.ERROR, lambda error: print(f"Caught: {error}"))
+                self.conn.on(EventType.OPEN, lambda _: print("Connection opened"))
+                self.conn.on(EventType.MESSAGE, on_message)
+                self.conn.on(EventType.CLOSE, lambda _: print("Connection closed"))
+                self.conn.on(EventType.ERROR, lambda error: print(f"Caught: {error}"))
 
-            # Start listening
-            await self.conn.start_listening()
-            self._listening = True
-            self._keepalive_task = asyncio.create_task(self._keepalive_loop())
+                # Start listening
+                await self.conn.start_listening()
+                self._listening = True
+                self._keepalive_task = asyncio.create_task(self._keepalive_loop())
         except Exception as e:
             print(f"Deepgram connection error: {e}")
 
@@ -105,8 +105,6 @@ class DeepgramTranscriber:
         self._listening = False
         if self._keepalive_task:
             self._keepalive_task.cancel()
-            with contextlib.suppress(Exception):
-                await self._keepalive_task
 
         if self._buf:
             await self._buf.clear()
