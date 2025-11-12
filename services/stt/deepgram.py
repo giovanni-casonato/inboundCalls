@@ -102,6 +102,7 @@ class DeepgramTranscriber:
         await self.llm.run_chat(text)
 
     async def deepgram_close(self):
+        self.conn.stop_listening()
         self._listening = False
         if self._keepalive_task:
             self._keepalive_task.cancel()
