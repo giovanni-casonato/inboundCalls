@@ -36,14 +36,17 @@ class DeepgramTranscriber:
             punctuate=True,
         )
 
-    async def deepgram_connect(self):        
+    async def deepgram_connect(self):   
+        print("Connecting to Deepgram...")     
         try:
             async with self.dg.listen.v1.connect(**self._opts) as self.conn:
                 def on_message(msg: ListenV1SocketClientResponse):
                     t = getattr(msg, "type", None)
+                    print(f"Deepgram message type: {t}")
                     if t == "Results":
                         try:
                             text = msg.channel.alternatives[0].transcript or ""
+                            print(f"Deepgram transcript: {text}")
                         except Exception:
                             return
                         if not text:
