@@ -37,7 +37,6 @@ class DeepgramTranscriber:
         )
 
     async def deepgram_connect(self):   
-        print("Connecting to Deepgram...")     
         try:
             async with self.dg.listen.v1.connect(**self._opts) as self.conn:
                 def on_message(msg: ListenV1SocketClientResponse) -> None:
@@ -76,7 +75,7 @@ class DeepgramTranscriber:
                             break
 
                 asyncio.create_task(keepalive())
-                await self.conn.start_listening()  # <– this blocks until connection closes
+                asyncio.create_task(keepalive())  # <– this blocks until connection closes
         except Exception as e:
             print(f"Deepgram connection error: {e}")
         finally:
