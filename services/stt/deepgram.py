@@ -69,18 +69,19 @@ class DeepgramTranscriber:
                 # keepalive loop
                 async def keepalive():
                     while self._listening:
-                        await asyncio.sleep(5)
+                        await asyncio.sleep(15)
                         try:
                             await self.conn.send_control(ListenV1ControlMessage(type="KeepAlive"))
                         except Exception:
                             break
-                self._keepalive_task = asyncio.create_task(keepalive())
-                await self.conn.start_listening()
+
+                asyncio.create_task(keepalive())
+                await self.conn.start_listening()  # <– this blocks until connection closes
         except Exception as e:
             print(f"Deepgram connection error: {e}")
         finally:
             self._listening = False
-            self.conn = None
+            self._conn = None
 
     async def send_audio(self, audio_bytes: bytes):
         if self.conn and audio_bytes and self._listening:
@@ -102,7 +103,6 @@ class DeepgramTranscriber:
         await self.llm.run_chat(text)
 
     async def deepgram_close(self):
-        self.conn.stop_listening()
         self._listening = False
         if self._keepalive_task:
             self._keepalive_task.cancel()
