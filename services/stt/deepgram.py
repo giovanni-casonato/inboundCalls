@@ -37,7 +37,7 @@ class DeepgramTranscriber:
 
     async def deepgram_connect(self):        
         try:
-            async with self.dg.listen.v1.connect(**self._opts) as conn:
+            async with self.dg.listen.v1.connect(**self._opts) as self.conn:
                 def on_message(msg: ListenV1SocketClientResponse) -> None:
                     t = getattr(msg, "type", None)
 
