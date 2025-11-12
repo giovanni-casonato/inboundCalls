@@ -40,7 +40,7 @@ class DeepgramTranscriber:
         print("Connecting to Deepgram...")     
         try:
             async with self.dg.listen.v1.connect(**self._opts) as self.conn:
-                def on_message(msg: ListenV1SocketClientResponse):
+                def on_message(msg: ListenV1SocketClientResponse) -> None:
                     t = getattr(msg, "type", None)
                     print(f"Deepgram message type: {t}")
                     if t == "Results":
@@ -59,9 +59,9 @@ class DeepgramTranscriber:
                         if self._buf:
                             asyncio.create_task(self._flush_to_llm())
 
-                self.conn.on(EventType.OPEN, lambda *_: print("Deepgram connection opened"))
+                self.conn.on(EventType.OPEN, lambda _: print("Deepgram connection opened"))
                 self.conn.on(EventType.MESSAGE, on_message)
-                self.conn.on(EventType.CLOSE, lambda *_: print("Deepgram connection closed"))
+                self.conn.on(EventType.CLOSE, lambda _: print("Deepgram connection closed"))
                 self.conn.on(EventType.ERROR, lambda error: print(f"Deepgram error: {error}"))
 
                 self._listening = True
