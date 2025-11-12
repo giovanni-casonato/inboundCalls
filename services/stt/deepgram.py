@@ -42,7 +42,7 @@ class DeepgramTranscriber:
                 def on_message(msg: ListenV1SocketClientResponse) -> None:
                     t = getattr(msg, "type", None)
                     print(f"Deepgram message type: {t}")
-                    if t == "Transcript":
+                    if t == "Results":
                         try:
                             text = msg.channel.alternatives[0].transcript or ""
                             print(f"Deepgram transcript: {text}")
@@ -74,14 +74,8 @@ class DeepgramTranscriber:
                         except Exception:
                             break
 
-                # Send an immediate KeepAlive so Deepgram sees a control frame quickly
-                try:
-                    await self.conn.send_control(ListenV1ControlMessage(type="KeepAlive"))
-                except Exception:
-                    pass
-                self._keepalive_task = asyncio.create_task(keepalive())
-                # Start read loop in background so Twilio media handling continues
-                asyncio.create_task(self.conn.start_listening())
+                asyncio.create_task(keepalive())
+                asyncio.create_task(self.conn.start_listening())  # <– this blocks until connection closes
         except Exception as e:
             print(f"Deepgram connection error: {e}")
         finally:
@@ -89,13 +83,12 @@ class DeepgramTranscriber:
             self.conn = None
 
     async def send_audio(self, audio_bytes: bytes):
-        if self.conn and audio_bytes and self._listening:
-            try:
-                # Use typed media message for Listen V1
-                print(f"Deepgram send_audio: {len(audio_bytes)} bytes")
-                await self.conn.send_media(ListenV1MediaMessage(audio_bytes))
-            except Exception as e:
-                print(f"Deepgram send_audio error: {e}")
+        try:
+            # Use typed media message for Listen V1
+            print(f"Deepgram send_audio: {len(audio_bytes)} bytes")
+            await self.conn.send_media(ListenV1MediaMessage(audio_bytes))
+        except Exception as e:
+            print(f"Deepgram send_audio error: {e}")
 
     async def _flush_to_llm(self):
         text = " ".join(self._buf).strip()
