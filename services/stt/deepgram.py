@@ -68,12 +68,11 @@ class DeepgramTranscriber:
 
                 # keepalive loop
                 async def keepalive():
-                    while self._listening:
-                        await asyncio.sleep(5)
-                        try:
-                            await self.conn.send_control(ListenV1ControlMessage(type="KeepAlive"))
-                        except Exception:
-                            break
+                    await asyncio.sleep(5)
+                    try:
+                        await self.conn.send_control(ListenV1ControlMessage(type="KeepAlive"))
+                    except Exception as e:
+                        print(f"Deepgram keepalive error: {e}")
 
                 asyncio.create_task(keepalive())
                 await self.conn.start_listening()  # <– this blocks until connection closes
