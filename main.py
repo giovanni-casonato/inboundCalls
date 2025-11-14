@@ -71,7 +71,7 @@ async def media_stream(websocket: WebSocket):
                     await transcriber.deepgram_connect()
                                         
                     # Send initial greeting to caller
-                    await text_to_speech.get_audio_from_text("Hello! Thanks for calling Wholesale Atlas. I'm here to help you with your real estate investment needs. What markets are you interested in buying properties in?")
+                    text_to_speech.get_audio_from_text("Hello! Thanks for calling Wholesale Atlas. I'm here to help you with your real estate investment needs. What markets are you interested in buying properties in?")
                     
                 case "media":
                     if transcriber:
