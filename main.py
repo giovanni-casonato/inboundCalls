@@ -1,6 +1,7 @@
 import os
 import json
 import base64
+import asyncio
 from fastapi import FastAPI, Request, WebSocket, Response
 from twilio.twiml.voice_response import VoiceResponse
 
@@ -73,7 +74,7 @@ async def media_stream(websocket: WebSocket):
                     # Send initial greeting to caller
                     asyncio.create_task(
                         text_to_speech.get_audio_from_text("Hello! Thanks for calling Wholesale Atlas. I'm here to help you with your real estate investment needs. What markets are you interested in buying properties in?")
-                    )                    
+                    )
                 case "media":
                     if transcriber:
                         # Send audio to Deepgram for transcription
