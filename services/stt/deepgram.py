@@ -72,8 +72,6 @@ class DeepgramTranscriber:
 
             self._listening = True
 
-            await asyncio.sleep(0.1)
-            
             self.keepalive_task = asyncio.create_task(self._keepalive())
 
         except Exception as e:
@@ -94,7 +92,6 @@ class DeepgramTranscriber:
         try:
             # Use typed media message for Listen V1
             await self.conn.send_media(ListenV1MediaMessage(audio_bytes))
-            print(f"Audio sent to Deepgram: {len(audio_bytes)} bytes")
         except Exception as e:
             print(f"Deepgram send_audio error: {e}")
 

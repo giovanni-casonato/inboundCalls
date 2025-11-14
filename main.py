@@ -79,7 +79,7 @@ async def media_stream(websocket: WebSocket):
                         
                         # Send buffer when it reaches the target size or when silence detected
                         if len(buffer) >= BUFFER_SIZE:
-                            await transcriber.send_audio(buffer)
+                            await transcriber.conn.send_media(buffer)
                             buffer = bytearray(b'')
                             
                 case "stop":
