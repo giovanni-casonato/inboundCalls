@@ -22,6 +22,7 @@ class DeepgramTranscriber:
         self.dg = AsyncDeepgramClient(api_key=os.environ["DEEPGRAM_API_KEY"])
         self._buf: List[str] = []
         self.conn = None
+        self.conn_context = None
         self.keepalive_task = None
         self._listening = False
         self._opts = dict(
@@ -38,7 +39,8 @@ class DeepgramTranscriber:
 
     async def deepgram_connect(self):   
         try:
-            self.conn = self.dg.listen.v1.connect(**self._opts)
+            self.conn_context = self.dg.listen.v1.connect(**self._opts)
+            self.conn = await self.conn_context.__aenter__()
 
             def on_message(msg: ListenV1SocketClientResponse) -> None:
                 t = getattr(msg, "type", None)
@@ -64,13 +66,10 @@ class DeepgramTranscriber:
             self.conn.on(EventType.CLOSE, lambda _: print("Deepgram connection closed"))
             self.conn.on(EventType.ERROR, lambda error: print(f"Deepgram error: {error}"))
 
-            await self.conn.start_listening()
-
             self._listening = True
 
             self.keepalive_task = asyncio.create_task(self.keepalive())
 
-            asyncio.create_task(keepalive())
         except Exception as e:
             print(f"Deepgram connection error: {e}")
 
