@@ -38,46 +38,52 @@ class DeepgramTranscriber:
 
     async def deepgram_connect(self):   
         try:
-            async with self.dg.listen.v1.connect(**self._opts) as self.conn:
-                def on_message(msg: ListenV1SocketClientResponse) -> None:
-                    t = getattr(msg, "type", None)
-                    print(f"Deepgram message type: {t}")
-                    if t == "Results":
-                        try:
-                            text = msg.channel.alternatives[0].transcript or ""
-                            print(f"Deepgram transcript: {text}")
-                        except Exception:
-                            return
-                        if not text:
-                            return
-                        if getattr(msg, "is_final", False):
-                            self._buf.append(text)
-                            if re.search(r"[.!?]$", text):
-                                asyncio.create_task(self._flush_to_llm())
-                    elif t == "UtteranceEnd":
-                        if self._buf:
+            self.conn = self.dg.listen.v1.connect(**self._opts)
+
+            def on_message(msg: ListenV1SocketClientResponse) -> None:
+                t = getattr(msg, "type", None)
+                print(f"Deepgram message type: {t}")
+                if t == "Results":
+                    try:
+                        text = msg.channel.alternatives[0].transcript or ""
+                        print(f"Deepgram transcript: {text}")
+                    except Exception:
+                        return
+                    if not text:
+                        return
+                    if getattr(msg, "is_final", False):
+                        self._buf.append(text)
+                        if re.search(r"[.!?]$", text):
                             asyncio.create_task(self._flush_to_llm())
+                elif t == "UtteranceEnd":
+                    if self._buf:
+                        asyncio.create_task(self._flush_to_llm())
 
-                self.conn.on(EventType.OPEN, lambda _: print("Deepgram connection opened"))
-                self.conn.on(EventType.MESSAGE, on_message)
-                self.conn.on(EventType.CLOSE, lambda _: print("Deepgram connection closed"))
-                self.conn.on(EventType.ERROR, lambda error: print(f"Deepgram error: {error}"))
+            self.conn.on(EventType.OPEN, lambda _: print("Deepgram connection opened"))
+            self.conn.on(EventType.MESSAGE, on_message)
+            self.conn.on(EventType.CLOSE, lambda _: print("Deepgram connection closed"))
+            self.conn.on(EventType.ERROR, lambda error: print(f"Deepgram error: {error}"))
 
-                self._listening = True
+            await self.conn.start_listening()
 
-                # keepalive loop
-                async def keepalive():
-                    while self._listening:
-                        await asyncio.sleep(5)
-                        try:
-                            await self.conn.send_control(ListenV1ControlMessage(type="KeepAlive"))
-                        except Exception:
-                            break
+            self._listening = True
 
-                asyncio.create_task(keepalive())
-                self.listen_task = asyncio.create_task(self.conn.start_listening())
+            self.keepalive_task = asyncio.create_task(self.keepalive())
+
+            asyncio.create_task(keepalive())
         except Exception as e:
             print(f"Deepgram connection error: {e}")
+
+    async def _keepalive(self):
+        """Send periodic keepalive messages to maintain the connection"""
+        while self._listening:
+            await asyncio.sleep(5)
+            try:
+                if self.conn:
+                    await self.conn.send_control(ListenV1ControlMessage(type="KeepAlive"))
+            except Exception as e:
+                print(f"Keepalive error: {e}")
+                break
 
     async def send_audio(self, audio_bytes: bytes):
         try:
@@ -98,10 +104,27 @@ class DeepgramTranscriber:
         await self.llm.run_chat(text)
 
     async def deepgram_close(self):
+        self._listening = False
+        
+        # Cancel keepalive task
+        if self.keepalive_task:
+            self.keepalive_task.cancel()
+            try:
+                await self.keepalive_task
+            except asyncio.CancelledError:
+                pass
+            self.keepalive_task = None
+        
+        # Close the connection properly
         if self.conn:
-            self.listen_task.cancel()
-            self.conn = None
-            self._listening = False
+            try:
+                await self.conn.send_control(ListenV1ControlMessage(type="CloseStream"))
+                await asyncio.sleep(0.1)  # Give it a moment to send
+                await self.conn.finish()
+            except Exception as e:
+                print(f"Error closing Deepgram connection: {e}")
+            finally:
+                self.conn = None
 
         if self._buf:
             self._buf.clear()
