@@ -68,7 +68,7 @@ class DeepgramTranscriber:
 
             self._listening = True
 
-            self.keepalive_task = asyncio.create_task(self.keepalive())
+            self.keepalive_task = asyncio.create_task(self._keepalive())
 
         except Exception as e:
             print(f"Deepgram connection error: {e}")
@@ -115,15 +115,14 @@ class DeepgramTranscriber:
             self.keepalive_task = None
         
         # Close the connection properly
-        if self.conn:
+        if self.conn_context:
             try:
-                await self.conn.send_control(ListenV1ControlMessage(type="CloseStream"))
-                await asyncio.sleep(0.1)  # Give it a moment to send
-                await self.conn.finish()
+                await self.conn_context.__aexit__(None, None, None)
             except Exception as e:
                 print(f"Error closing Deepgram connection: {e}")
             finally:
                 self.conn = None
-
+                self.conn_context = None
+                
         if self._buf:
             self._buf.clear()
