@@ -72,6 +72,8 @@ class DeepgramTranscriber:
 
             self._listening = True
 
+            await asyncio.sleep(0.1)
+            
             self.keepalive_task = asyncio.create_task(self._keepalive())
 
         except Exception as e:
@@ -105,7 +107,7 @@ class DeepgramTranscriber:
         try:
             await self.ws.send_text(json.dumps({"event":"clear","streamSid": self.stream_sid}))
         except Exception:
-            pass
+            print(f"Error sending clear event: {e}")
         await self.llm.run_chat(text)
 
     async def deepgram_close(self):
