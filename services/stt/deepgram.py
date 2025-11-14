@@ -91,8 +91,8 @@ class DeepgramTranscriber:
     async def send_audio(self, audio_bytes: bytes):
         try:
             # Use typed media message for Listen V1
-            print(f"Sending audio to Deepgram: {len(audio_bytes)} bytes")
             await self.conn.send_media(ListenV1MediaMessage(audio_bytes))
+            print(f"Audio sent to Deepgram: {len(audio_bytes)} bytes")
         except Exception as e:
             print(f"Deepgram send_audio error: {e}")
 
