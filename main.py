@@ -82,7 +82,9 @@ async def media_stream(websocket: WebSocket):
                         
                         # Send buffer when it reaches the target size or when silence detected
                         if len(buffer) >= BUFFER_SIZE:
+                            print(f"Sending buffer to Deepgram: {len(buffer)} bytes")
                             await transcriber.conn.send_media(ListenV1MediaMessage(buffer))
+                            print(f"Buffer sent to Deepgram")
                             buffer = bytearray(b'')
                             
                 case "stop":
