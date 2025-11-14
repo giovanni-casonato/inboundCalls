@@ -71,6 +71,7 @@ class DeepgramTranscriber:
             self.conn.on(EventType.CLOSE, lambda _: print("Deepgram connection closed"))
             self.conn.on(EventType.ERROR, lambda error: print(f"Deepgram error: {error}"))
 
+            await self.conn.start_listening()
             self._listening = True
 
             self.keepalive_task = asyncio.create_task(self._keepalive())
