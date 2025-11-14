@@ -45,6 +45,7 @@ class DeepgramTranscriber:
             self.conn = await self.conn_context.__aenter__()
 
             print(f"Connection object created: {type(self.conn)}")
+            print("Available methods:", [m for m in dir(self.conn) if not m.startswith('_') and callable(getattr(self.conn, m))])
 
             def on_message(msg: ListenV1SocketClientResponse) -> None:
                 t = getattr(msg, "type", None)
