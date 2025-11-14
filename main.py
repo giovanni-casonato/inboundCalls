@@ -7,6 +7,9 @@ from twilio.twiml.voice_response import VoiceResponse
 from services.tts.tts_factory import TTSFactory
 from services.llm.openai_async import LargeLanguageModel
 from services.stt.deepgram import DeepgramTranscriber
+from deepgram.extensions.types.sockets import (
+    ListenV1MediaMessage,
+)
 
 app = FastAPI()
 
