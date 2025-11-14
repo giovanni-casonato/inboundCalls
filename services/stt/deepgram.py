@@ -39,8 +39,12 @@ class DeepgramTranscriber:
 
     async def deepgram_connect(self):   
         try:
+            print("Starting Deepgram connection...")
+            
             self.conn_context = self.dg.listen.v1.connect(**self._opts)
             self.conn = await self.conn_context.__aenter__()
+
+            print(f"Connection object created: {type(self.conn)}")
 
             def on_message(msg: ListenV1SocketClientResponse) -> None:
                 t = getattr(msg, "type", None)
@@ -96,6 +100,7 @@ class DeepgramTranscriber:
         self._buf.clear()
         if not text:
             return
+        print(f"Flushing to LLM: {text}")
         try:
             await self.ws.send_text(json.dumps({"event":"clear","streamSid": self.stream_sid}))
         except Exception:
@@ -123,6 +128,6 @@ class DeepgramTranscriber:
             finally:
                 self.conn = None
                 self.conn_context = None
-                
+
         if self._buf:
             self._buf.clear()
