@@ -48,6 +48,7 @@ class DeepgramTranscriber:
             self.conn = await self.conn_context.__aenter__()
 
             def on_message(msg: ListenV1SocketClientResponse) -> None:
+                t = getattr(msg, "type", None)
                 if t == "Results":
                     try:
                         text = msg.channel.alternatives[0].transcript or ""
