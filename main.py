@@ -82,7 +82,7 @@ async def media_stream(websocket: WebSocket):
                             buffer = bytearray()
 
                 case "stop":
-                    print("Call ended")
+                    print("Twilio stop event received")
                     if transcriber:
                         await transcriber.deepgram_close()
                         transcriber = None

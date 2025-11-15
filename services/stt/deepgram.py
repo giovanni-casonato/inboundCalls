@@ -48,12 +48,9 @@ class DeepgramTranscriber:
             self.conn = await self.conn_context.__aenter__()
 
             def on_message(msg: ListenV1SocketClientResponse) -> None:
-                t = getattr(msg, "type", None)
-                print(f"Deepgram message type: {t}")
                 if t == "Results":
                     try:
                         text = msg.channel.alternatives[0].transcript or ""
-                        print(f"Deepgram transcript: {text}")
                     except Exception:
                         return
                     if not text:
@@ -104,7 +101,7 @@ class DeepgramTranscriber:
         self._buf.clear()
         if not text:
             return
-        print(f"Flushing to LLM: {text}")
+        print(f"User: {text}")
         try:
             await self.ws.send_text(json.dumps({"event":"clear","streamSid": self.stream_sid}))
         except Exception as e:
