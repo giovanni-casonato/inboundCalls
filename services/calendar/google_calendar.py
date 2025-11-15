@@ -20,7 +20,6 @@ class GoogleCalendarService:
         try:
             # Load service account credentials from environment variable or file
             credentials_json = os.getenv('GOOGLE_CALENDAR_CREDENTIALS_JSON')
-            print(f"Credentials JSON: {credentials_json}")
             if credentials_json:
                 # Parse JSON from environment variable
                 credentials_info = json.loads(credentials_json)
@@ -180,15 +179,14 @@ class GoogleCalendarService:
                 },
             }
             
-            # Add attendee if email provided
-            if customer_email:
-                event['attendees'] = [{'email': customer_email}]
+            # Don't add attendees - service accounts can't invite without Domain-Wide Delegation
+            # Customer email is already in the description for reference
             
             # Insert the event
             created_event = self.service.events().insert(
                 calendarId=self.calendar_id, 
                 body=event,
-                sendUpdates='all' if customer_email else 'none'
+                sendUpdates='none'  # Don't send invites from service account
             ).execute()
             
             return {
@@ -196,7 +194,10 @@ class GoogleCalendarService:
                 "event_id": created_event['id'],
                 "event_link": created_event.get('htmlLink'),
                 "start_time": start_datetime.strftime("%B %d, %Y at %I:%M %p"),
-                "end_time": end_datetime.strftime("%I:%M %p")
+                "end_time": end_datetime.strftime("%I:%M %p"),
+                "customer_name": customer_name,
+                "customer_email": customer_email,
+                "message": f"Appointment successfully scheduled for {customer_name}"
             }
             
         except HttpError as e:

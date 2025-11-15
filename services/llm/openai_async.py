@@ -85,8 +85,13 @@ class LargeLanguageModel:
         with open('services/llm/instructions.txt', "r") as f:
             instructions = f.read()
         
+        # Get current date for context
+        today = datetime.now().strftime("%B %d, %Y")
+        
         # Add calendar capabilities to instructions
-        calendar_instructions = """
+        calendar_instructions = f"""
+
+IMPORTANT: Today's date is {today}. Use this when interpreting relative dates like "tomorrow", "next week", etc.
 
 You have access to calendar management tools:
 1. check_availability - Check available time slots for a specific date
@@ -97,7 +102,7 @@ When a customer wants to schedule an appointment:
 2. Use check_availability to show available slots
 3. Once they choose a time, collect their name, email (optional), and phone (optional)
 4. Use schedule_appointment to book it
-5. Confirm the appointment details
+5. Confirm the appointment details clearly
 
 Always be helpful and guide the customer through the scheduling process naturally.
 """
