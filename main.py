@@ -7,9 +7,6 @@ from twilio.twiml.voice_response import VoiceResponse
 from services.tts.tts_factory import TTSFactory
 from services.llm.openai_async import LargeLanguageModel
 from services.stt.deepgram import DeepgramTranscriber
-from deepgram.extensions.types.sockets import (
-    ListenV1MediaMessage,
-)
 
 app = FastAPI()
 
@@ -20,7 +17,6 @@ TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
 # Twilio sends audio data as 160 byte messages containing 20ms of audio each
 # We buffer 4 twilio messages corresponding to 80 ms of audio
 BUFFER_SIZE = 4 * 160
-TWILIO_SAMPLE_RATE = 8000
 
 
 @app.post("/incoming-call")
@@ -43,9 +39,9 @@ async def media_stream(websocket: WebSocket):
     WebSocket endpoint for handling real-time audio from inbound calls.
     """
     await websocket.accept()
-    buffer = bytearray(b'')
+    buffer = bytearray()
     transcriber = None
-    empty_byte_received = False
+    
     try:
         async for message in websocket.iter_text():
             data = json.loads(message)
@@ -79,14 +75,11 @@ async def media_stream(websocket: WebSocket):
                         payload_b64 = data['media']['payload']
                         payload_mulaw = base64.b64decode(payload_b64)
                         buffer.extend(payload_mulaw)
-                        if payload_mulaw == b'':
-                            empty_byte_received = True
-                        # Send buffer when it reaches the target size or when silence detected (we want to send silence to keep the dg websocket connection alive)
-                        if len(buffer) >= BUFFER_SIZE or empty_byte_received:
-                            print(f"Sending buffer to Deepgram: {len(buffer)} bytes")
+                        
+                        # Send buffer when it reaches the target size
+                        if len(buffer) >= BUFFER_SIZE:
                             await transcriber.send_audio(buffer)
-                            print(f"Buffer sent to Deepgram")
-                            buffer = bytearray(b'')
+                            buffer = bytearray()
 
                 case "stop":
                     print("Call ended")

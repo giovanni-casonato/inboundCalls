@@ -1,5 +1,8 @@
 # services/stt/deepgram.py
-import os, re, json, asyncio
+import os
+import re
+import json
+import asyncio
 from typing import List
 from fastapi import WebSocket
 from deepgram import AsyncDeepgramClient
@@ -35,7 +38,6 @@ class DeepgramTranscriber:
             sample_rate=TWILIO_SAMPLE_RATE,
             interim_results=True,
             utterance_end_ms=2000,
-            punctuate=True,
         )
 
     async def deepgram_connect(self):   
@@ -44,9 +46,6 @@ class DeepgramTranscriber:
 
             self.conn_context = self.dg.listen.v1.connect(**self._opts)
             self.conn = await self.conn_context.__aenter__()
-
-            print(f"Connection object created: {type(self.conn)}")
-            print("Available methods:", [m for m in dir(self.conn) if not m.startswith('_') and callable(getattr(self.conn, m))])
 
             def on_message(msg: ListenV1SocketClientResponse) -> None:
                 t = getattr(msg, "type", None)
@@ -112,26 +111,22 @@ class DeepgramTranscriber:
             print(f"Error sending clear event: {e}")
         await self.llm.run_chat(text)
 
+    async def _cancel_task(self, task):
+        """Helper to safely cancel and await an asyncio task"""
+        if task:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        return None
+
     async def deepgram_close(self):
         self._listening = False
         
-        # Cancel listening task
-        if self.listening_task:
-            self.listening_task.cancel()
-            try:
-                await self.listening_task
-            except asyncio.CancelledError:
-                pass
-            self.listening_task = None
-        
-        # Cancel keepalive task
-        if self.keepalive_task:
-            self.keepalive_task.cancel()
-            try:
-                await self.keepalive_task
-            except asyncio.CancelledError:
-                pass
-            self.keepalive_task = None
+        # Cancel background tasks
+        self.listening_task = await self._cancel_task(self.listening_task)
+        self.keepalive_task = await self._cancel_task(self.keepalive_task)
         
         # Close the connection properly
         if self.conn_context:
