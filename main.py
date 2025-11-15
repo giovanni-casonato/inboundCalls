@@ -45,7 +45,7 @@ async def media_stream(websocket: WebSocket):
     await websocket.accept()
     buffer = bytearray(b'')
     transcriber = None
-    
+    empty_byte_received = False
     try:
         async for message in websocket.iter_text():
             data = json.loads(message)
@@ -79,14 +79,15 @@ async def media_stream(websocket: WebSocket):
                         payload_b64 = data['media']['payload']
                         payload_mulaw = base64.b64decode(payload_b64)
                         buffer.extend(payload_mulaw)
-                        
-                        # Send buffer when it reaches the target size or when silence detected
-                        if len(buffer) >= BUFFER_SIZE:
+                        if payload_mulaw == b'':
+                            empty_byte_received = True
+                        # Send buffer when it reaches the target size or when silence detected (we want to send silence to keep the dg websocket connection alive)
+                        if len(buffer) >= BUFFER_SIZE or empty_byte_received:
                             print(f"Sending buffer to Deepgram: {len(buffer)} bytes")
                             await transcriber.send_audio(buffer)
                             print(f"Buffer sent to Deepgram")
                             buffer = bytearray(b'')
-                            
+
                 case "stop":
                     print("Call ended")
                     if transcriber:
