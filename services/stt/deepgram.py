@@ -105,7 +105,7 @@ class DeepgramTranscriber:
         print(f"Flushing to LLM: {text}")
         try:
             await self.ws.send_text(json.dumps({"event":"clear","streamSid": self.stream_sid}))
-        except Exception:
+        except Exception as e:
             print(f"Error sending clear event: {e}")
         await self.llm.run_chat(text)
 

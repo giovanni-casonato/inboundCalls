@@ -1,7 +1,6 @@
 import os
 import json
 import base64
-import asyncio
 from fastapi import FastAPI, Request, WebSocket, Response
 from twilio.twiml.voice_response import VoiceResponse
 
@@ -72,9 +71,8 @@ async def media_stream(websocket: WebSocket):
                     await transcriber.deepgram_connect()
                                         
                     # Send initial greeting to caller
-                    asyncio.create_task(
-                        text_to_speech.get_audio_from_text("Hello! Thanks for calling Wholesale Atlas. I'm here to help you with your real estate investment needs. What markets are you interested in buying properties in?")
-                    )
+                    await text_to_speech.get_audio_from_text("Hello! Thanks for calling Wholesale Atlas. I'm here to help you with your real estate investment needs. What markets are you interested in buying properties in?")
+                    
                 case "media":
                     if transcriber:
                         # Send audio to Deepgram for transcription
@@ -85,7 +83,7 @@ async def media_stream(websocket: WebSocket):
                         # Send buffer when it reaches the target size or when silence detected
                         if len(buffer) >= BUFFER_SIZE:
                             print(f"Sending buffer to Deepgram: {len(buffer)} bytes")
-                            await transcriber.conn.send_media(ListenV1MediaMessage(buffer))
+                            await transcriber.send_audio(buffer)
                             print(f"Buffer sent to Deepgram")
                             buffer = bytearray(b'')
                             
