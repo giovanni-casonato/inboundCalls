@@ -20,7 +20,7 @@ class GoogleCalendarService:
         try:
             # Load service account credentials from environment variable or file
             credentials_json = os.getenv('GOOGLE_CALENDAR_CREDENTIALS_JSON')
-            
+            print(f"Credentials JSON: {credentials_json}")
             if credentials_json:
                 # Parse JSON from environment variable
                 credentials_info = json.loads(credentials_json)
