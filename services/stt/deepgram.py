@@ -24,6 +24,7 @@ class DeepgramTranscriber:
         self.conn = None
         self.conn_context = None
         self.keepalive_task = None
+        self.listening_task = None
         self._listening = False
         self._opts = dict(
             model="nova-3",
@@ -71,7 +72,9 @@ class DeepgramTranscriber:
             self.conn.on(EventType.CLOSE, lambda _: print("Deepgram connection closed"))
             self.conn.on(EventType.ERROR, lambda error: print(f"Deepgram error: {error}"))
 
-            await self.conn.start_listening()
+            # Run start_listening as a background task so it doesn't block
+            # This allows the connection to listen for events while main code continues
+            self.listening_task = asyncio.create_task(self.conn.start_listening())
             self._listening = True
 
             self.keepalive_task = asyncio.create_task(self._keepalive())
@@ -111,6 +114,15 @@ class DeepgramTranscriber:
 
     async def deepgram_close(self):
         self._listening = False
+        
+        # Cancel listening task
+        if self.listening_task:
+            self.listening_task.cancel()
+            try:
+                await self.listening_task
+            except asyncio.CancelledError:
+                pass
+            self.listening_task = None
         
         # Cancel keepalive task
         if self.keepalive_task:
